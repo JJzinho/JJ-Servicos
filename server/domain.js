@@ -1,3 +1,4 @@
+import { distanceKm } from './address.js';
 export const schools = ['Fundamental', 'Médio', 'Técnico', 'Superior'];
 export const shifts = ['Integral', 'Manhã', 'Tarde', 'Noite', 'Flexível'];
 export const stages = [
@@ -40,9 +41,11 @@ export function choice(value, values, label) {
   return value;
 }
 function tags(value) {
-  const raw = field(value ?? '', 'competências', 1200, false)
-    .split(',')
-    .map((s) => s.trim())
+  const entries = Array.isArray(value)
+    ? value
+    : field(value ?? '', 'competências', 2400, false).split(',');
+  const raw = entries
+    .map((v) => field(v, 'competência', 80, false))
     .filter(Boolean);
   if (raw.length > 30 || raw.some((t) => t.length > 80))
     fail(400, 'Use até 30 competências com até 80 caracteres cada.');
@@ -60,29 +63,104 @@ function years(value) {
     fail(400, 'Informe a experiência em anos, de 0 a 80.');
   return number;
 }
+const states =
+  'AC AL AP AM BA CE DF ES GO MA MT MS MG PA PB PR PE PI RJ RN RS RO RR SC SP SE TO'.split(
+    ' ',
+  );
+export function addressData(body) {
+  const cep = field(body?.cep, 'CEP', 9).replace(/-/g, '');
+  if (!/^\d{8}$/.test(cep)) fail(400, 'Informe um CEP com oito dígitos.');
+  return {
+    cep,
+    street: field(body.street, 'logradouro', 180),
+    number: field(body.number, 'número', 20),
+    complement: field(body.complement ?? '', 'complemento', 120, false),
+    district: field(body.district, 'bairro'),
+    city: field(body.city, 'cidade'),
+    state: choice(body.state, states, 'UF'),
+  };
+}
+function cpfNumber(value) {
+  const digits = field(value, 'CPF', 14).replace(/[.\-]/g, '');
+  if (!/^\d{11}$/.test(digits) || /^(\d)\1+$/.test(digits))
+    fail(400, 'Confira o CPF informado.');
+  for (const length of [9, 10]) {
+    const sum = [...digits.slice(0, length)].reduce(
+      (total, n, i) => total + Number(n) * (length + 1 - i),
+      0,
+    );
+    if (((sum * 10) % 11) % 10 !== Number(digits[length]))
+      fail(400, 'Confira os dígitos do CPF.');
+  }
+  return digits;
+}
+export function professionalRoles(p) {
+  return (
+    p.roles ??
+    (p.occupation
+      ? [
+          {
+            title: p.occupation,
+            years: p.experience,
+            summary: p.experienceText || '',
+          },
+        ]
+      : [])
+  );
+}
 export function profileData(role, body) {
-  const city = field(body.city, 'cidade');
+  const address = addressData(body.address);
+  const common = { complete: true, city: address.city, address };
   if (role === 'company')
     return {
-      city,
+      ...common,
       sector: field(body.sector, 'setor'),
       contact: field(body.contact, 'responsável'),
     };
+  if (
+    !Array.isArray(body.roles) ||
+    !body.roles.length ||
+    body.roles.length > 30
+  )
+    fail(400, 'Selecione de uma a 30 funções.');
+  const roles = body.roles.map((r) => ({
+    title: field(r?.title, 'função'),
+    years: years(r.years),
+    summary: field(r.summary, 'resumo da função', 2400),
+  }));
+  if (new Set(roles.map((r) => normalize(r.title))).size !== roles.length)
+    fail(400, 'Cada função deve aparecer uma vez.');
+  const hard = tags(body.hard),
+    soft = tags(body.soft);
+  if (!hard.length && !soft.length)
+    fail(400, 'Marque ao menos uma competência.');
+  const phone = field(body.phone, 'telefone', 35);
+  if (
+    !/^\+?[\d\s()-]+$/.test(phone) ||
+    !/^\d{10,13}$/.test(phone.replace(/\D/g, ''))
+  )
+    fail(400, 'Informe o telefone com DDD.');
+  return {
+    ...common,
+    phone,
+    cpf: cpfNumber(body.cpf),
+    roles,
+    hard,
+    soft,
+    school: choice(body.school, schools, 'formação'),
+    availability: choice(body.availability, shifts, 'disponibilidade'),
+  };
+}
+export function publicProfile(p) {
+  const { city, phone, school, availability, hard, soft } = p;
   return {
     city,
-    phone: field(body.phone, 'telefone', 35),
-    school: choice(body.school, schools, 'formação'),
-    experience: years(body.experience),
-    experienceText: field(
-      body.experienceText || '',
-      'experiências',
-      2400,
-      false,
-    ),
-    occupation: field(body.occupation, 'função de interesse'),
-    availability: choice(body.availability, shifts, 'disponibilidade'),
-    hard: tags(body.hard),
-    soft: tags(body.soft),
+    phone,
+    school,
+    availability,
+    hard,
+    soft,
+    roles: professionalRoles(p),
   };
 }
 export function jobData(body) {
@@ -108,7 +186,11 @@ export function match(profile, job, approved = []) {
   const city = normalize(profile.city),
     target = normalize(job.city);
   if (
-    (job.locationRequired && city !== target) ||
+    (job.locationRequired &&
+      (city !== target ||
+        (profile.address?.state &&
+          job.address?.state &&
+          profile.address.state !== job.address.state))) ||
     job.required.some((t) => !skills.has(normalize(t)))
   )
     return null;
@@ -126,27 +208,48 @@ export function match(profile, job, approved = []) {
     if (found) evidence.push(found);
     return Boolean(found);
   }
-  const experience =
+  const roles = professionalRoles(profile)
+    .slice()
+    .sort((a, b) => b.years - a.years);
+  const role =
     job.desiredExperience &&
-    profile.experience &&
-    equivalent('cargo', job.title, [normalize(profile.occupation)])
-      ? profile.experience
-      : 0;
+    roles.find(
+      (r) =>
+        r.years > 0 && equivalent('cargo', job.title, [normalize(r.title)]),
+    );
+  const experience = role ? role.years : 0;
   const skillNames = [...skills];
-  const matched = desired.filter((term) =>
+  const covered = desired.filter((term) =>
     equivalent('competência', term, skillNames),
-  ).length;
+  );
+  const km = distanceKm(profile.address?.point, job.address?.point);
+  const sameState =
+    !profile.address?.state ||
+    !job.address?.state ||
+    profile.address.state === job.address.state;
+  let region;
+  if (km === null) {
+    region = 5;
+    if (sameState && metro.includes(city) && metro.includes(target))
+      region = 17;
+    if (sameState && city === target) region = 25;
+  } else {
+    const distances = [
+      [5, 25],
+      [15, 20],
+      [30, 15],
+      [Infinity, 5],
+    ];
+    region = distances.find(([max]) => km <= max)[1];
+  }
   const parts = {
     experience: job.desiredExperience
       ? Math.min(40, Math.round((40 * experience) / job.desiredExperience))
       : 40,
-    skills: desired.length ? Math.round((25 * matched) / desired.length) : 25,
-    region:
-      city === target
-        ? 25
-        : metro.includes(city) && metro.includes(target)
-          ? 17
-          : 5,
+    skills: desired.length
+      ? Math.round((25 * covered.length) / desired.length)
+      : 25,
+    region,
     availability: [job.schedule, 'Integral', 'Flexível'].includes(
       profile.availability,
     )
@@ -155,6 +258,12 @@ export function match(profile, job, approved = []) {
   };
   return {
     parts,
+    facts: {
+      km,
+      required: job.required,
+      covered,
+      missing: desired.filter((t) => !covered.includes(t)),
+    },
     ...(evidence.length ? { evidence } : {}),
     score: Object.values(parts).reduce((sum, n) => sum + n, 0),
   };

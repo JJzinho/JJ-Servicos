@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import {
   approveTerms,
+  interpretFit,
   suggestTerms,
   GeminiUnavailable,
 } from '../server/gemini.js';
@@ -99,4 +100,36 @@ test('chave ausente, cota, modelo inválido, JSON incompleto e índices inválid
       suggestTerms(job, { apiKey: 'fake', ...options }),
       GeminiUnavailable,
     );
+});
+
+test('análise conjunta transmite somente os indicadores profissionais e a distância já calculada', async () => {
+  const answer = {
+    competencias: 'PDV atendido.',
+    proximidade: 'Distância aproximada de 12 km.',
+  };
+  const actual = await interpretFit(
+    {
+      covered: ['pdv'],
+      missing: [],
+      km: 12,
+      cpf: 'privado',
+      address: 'privado',
+    },
+    {
+      apiKey: 'fake',
+      send: async (url, options) => {
+        assert.deepEqual(
+          JSON.parse(JSON.parse(options.body).contents[0].parts[0].text),
+          {
+            competenciasObrigatoriasAtendidas: [],
+            competenciasDesejaveisAtendidas: ['pdv'],
+            competenciasDesejaveisNaoIdentificadas: [],
+            distanciaAproximadaEmLinhaRetaKm: 12,
+          },
+        );
+        return packet(answer);
+      },
+    },
+  );
+  assert.deepEqual(actual, answer);
 });

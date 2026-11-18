@@ -1,7 +1,13 @@
+import { lookupCep } from './address.js';
 import express from 'express';
 import { rateLimit } from 'express-rate-limit';
 import { fileURLToPath } from 'node:url';
-import { suggestTerms, approveTerms, GeminiUnavailable } from './gemini.js';
+import {
+  interpretFit,
+  suggestTerms,
+  approveTerms,
+  GeminiUnavailable,
+} from './gemini.js';
 import { pool, transaction } from './db.js';
 import {
   allow,
@@ -18,6 +24,9 @@ import {
   fail,
   field,
   jobData,
+  publicProfile,
+  addressData,
+  normalize,
   match,
   profileData,
   stages,
@@ -47,7 +56,7 @@ api.use(
       fail(403, 'Origem inválida.');
     next();
   },
-  express.json({ limit: '32kb' }),
+  express.json({ limit: '256kb' }),
 );
 const authLimit = rateLimit({
   windowMs: 10 * 60 * 1000,
@@ -98,9 +107,43 @@ api.post('/logout', async (req, res) => {
   ]);
   res.clearCookie('jj_session', { path: '/' }).json({ ok: true });
 });
+api.get(
+  '/cep/:cep',
+  rateLimit({
+    windowMs: 60000,
+    limit: 45,
+    message: { error: 'Aguarde antes de consultar outro CEP.' },
+  }),
+  async (req, res) => {
+    if (!/^\d{8}$/.test(req.params.cep))
+      fail(400, 'Informe os oito dígitos do CEP.');
+    const entry = await lookupCep(req.params.cep);
+    if (!entry)
+      fail(
+        422,
+        'Consulta indisponível ou CEP não localizado. Preencha o endereço manualmente.',
+      );
+    const { point, ...address } = entry;
+    res.json(address);
+  },
+);
+async function locate(address, previous) {
+  const sameLocality = (other) =>
+    other &&
+    other.cep === address.cep &&
+    other.state === address.state &&
+    normalize(other.city) === normalize(address.city);
+  if (previous?.point && sameLocality(previous)) return previous.point;
+  const found = await lookupCep(address.cep);
+  return sameLocality(found) ? found.point : null;
+}
 api.put('/me', allow('candidate', 'company'), async (req, res) => {
   const name = field(req.body.name, 'nome');
   const profile = profileData(req.user.role, req.body);
+  profile.address.point = await locate(
+    profile.address,
+    req.user.profile.address,
+  );
   const consent = req.user.role === 'candidate' && req.body.consent === true;
   await pool.query(
     `UPDATE jj.accounts SET name=$2,profile=$3,consent_at=
@@ -120,6 +163,14 @@ api.delete('/me', allow('candidate'), authLimit, async (req, res) => {
   res.clearCookie('jj_session', { path: '/' }).json({ ok: true });
 });
 
+api.use((req, res, next) => {
+  if (req.user.role !== 'admin' && req.user.profile.complete !== true)
+    return res.status(403).json({
+      error: 'Complete seu cadastro para acessar o sistema.',
+      code: 'PROFILE_INCOMPLETE',
+    });
+  next();
+});
 const uuid = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
 api.param('id', (req, res, next, value) => {
   if (!uuid.test(value)) fail(404, 'Vaga não encontrada.');
@@ -160,7 +211,10 @@ api.post('/jobs', allow('company'), async (req, res) => {
   if (!req.user.profile.city)
     fail(400, 'Complete o cadastro da empresa antes de abrir uma vaga.');
   const title = field(req.body.title, 'título'),
-    details = jobData(req.body);
+    address = addressData(req.body.address),
+    details = jobData({ ...req.body, city: address.city });
+  address.point = await locate(address, req.user.profile.address);
+  details.address = address;
   const { rows } = await pool.query(
     'INSERT INTO jj.jobs(company_id,title,details) VALUES ($1,$2,$3) RETURNING id',
     [req.user.id, title, details],
@@ -184,7 +238,7 @@ api.post('/jobs/:id/interest', allow('candidate'), async (req, res) => {
 async function ranking(db, job, ids) {
   const { rows } = await db.query(
     `SELECT id,name,profile,created_at FROM jj.accounts
-    WHERE role='candidate' AND consent_at IS NOT NULL AND ($1::uuid[] IS NULL OR id=ANY($1))
+    WHERE role='candidate' AND profile @> '{"complete":true}' AND consent_at IS NOT NULL AND ($1::uuid[] IS NULL OR id=ANY($1))
     ORDER BY created_at,id ${ids ? 'FOR SHARE' : ''}`,
     [ids ?? null],
   );
@@ -201,7 +255,15 @@ async function ranking(db, job, ids) {
         },
         approved,
       );
-      return result ? [{ ...candidate, ...result }] : [];
+      return result
+        ? [
+            {
+              ...candidate,
+              profile: publicProfile(candidate.profile),
+              ...result,
+            },
+          ]
+        : [];
     })
     .sort((a, b) => b.score - a.score);
 }
@@ -281,13 +343,14 @@ api.post('/jobs/:id/publish', allow('admin'), async (req, res) => {
       fail(409, 'Um perfil mudou. Atualize a triagem.');
     for (const [index, candidate] of list.entries()) {
       await db.query(
-        'INSERT INTO jj.selections(job_id,candidate_id,position,score,ai_evidence) VALUES ($1,$2,$3,$4,$5)',
+        'INSERT INTO jj.selections(job_id,candidate_id,position,score,ai_evidence,match_facts) VALUES ($1,$2,$3,$4,$5,$6)',
         [
           job.id,
           candidate.id,
           index + 1,
           candidate.score,
           JSON.stringify(candidate.evidence ?? []),
+          candidate.facts,
         ],
       );
       await notify(
@@ -313,12 +376,35 @@ async function notify(db, id, message) {
 api.get('/jobs/:id/shortlist', allow('company', 'admin'), async (req, res) => {
   const job = await jobFor(pool, req.params.id, req.user);
   const { rows } = await pool.query(
-    `SELECT a.id,a.name,a.email,a.profile,s.stage,s.score,s.ai_evidence AS evidence FROM jj.selections s JOIN jj.accounts a ON a.id=s.candidate_id
+    `SELECT a.id,a.name,a.email,a.profile,s.stage,s.score,s.ai_evidence AS evidence,s.match_facts AS facts FROM jj.selections s JOIN jj.accounts a ON a.id=s.candidate_id
     WHERE s.job_id=$1 AND a.consent_at IS NOT NULL ORDER BY s.position`,
     [job.id],
   );
-  res.json(rows);
+  res.json(rows.map((r) => ({ ...r, profile: publicProfile(r.profile) })));
 });
+api.post(
+  '/jobs/:id/analysis/:candidate',
+  allow('admin', 'company'),
+  geminiLimit,
+  async (req, res) => {
+    const job = await jobFor(pool, req.params.id, req.user);
+    const candidate = req.params.candidate;
+    if (!uuid.test(candidate)) fail(400, 'Perfil inválido.');
+    let facts;
+    if (req.user.role === 'admin' && job.status === 'triagem') {
+      facts = (await ranking(pool, job, [candidate]))[0]?.facts;
+    } else {
+      const { rows } = await pool.query(
+        `SELECT s.match_facts FROM jj.selections s JOIN jj.accounts a ON a.id=s.candidate_id
+      WHERE job_id=$1 AND candidate_id=$2 AND a.consent_at IS NOT NULL`,
+        [job.id, candidate],
+      );
+      facts = rows[0]?.match_facts;
+    }
+    if (!facts) fail(404, 'Dados de compatibilidade indisponíveis.');
+    res.json(await interpretFit(facts));
+  },
+);
 api.put('/jobs/:id/stage', allow('company'), async (req, res) => {
   const stage = choice(req.body.stage, stages, 'etapa');
   if (!uuid.test(req.body.candidate)) fail(400, 'Candidato inválido.');
@@ -394,6 +480,11 @@ app.get('/', (req, res) => res.sendFile('index.html', { root }));
 app.use((err, req, res, next) => {
   if (err instanceof GeminiUnavailable)
     return res.status(503).json({ error: err.message });
+  if (err.code === '23505' && err.constraint === 'accounts_candidate_cpf')
+    return res.status(409).json({
+      error:
+        'Não foi possível salvar este CPF. Confira os dados ou entre na conta já cadastrada.',
+    });
   if (err.code === '23505')
     return res
       .status(409)
@@ -411,7 +502,7 @@ app.use((err, req, res, next) => {
 });
 try {
   await pool.query(
-    'SELECT j.ai_match,s.ai_evidence FROM jj.jobs j, jj.selections s LIMIT 0',
+    'SELECT j.ai_match,s.ai_evidence,s.match_facts FROM jj.jobs j, jj.selections s LIMIT 0',
   );
   const port = Number(process.env.PORT || 3000);
   app.listen(port, '127.0.0.1', () =>

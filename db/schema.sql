@@ -58,3 +58,7 @@ CREATE INDEX IF NOT EXISTS notices_candidate ON jj.notices(candidate_id, created
 -- Compatível com instalações anteriores. As listas já enviadas mantêm suas notas.
 ALTER TABLE jj.jobs ADD COLUMN IF NOT EXISTS ai_match jsonb;
 ALTER TABLE jj.selections ADD COLUMN IF NOT EXISTS ai_evidence jsonb NOT NULL DEFAULT '[]';
+
+CREATE UNIQUE INDEX IF NOT EXISTS accounts_candidate_cpf
+  ON jj.accounts ((profile->>'cpf')) WHERE role='candidate' AND profile ? 'cpf';
+ALTER TABLE jj.selections ADD COLUMN IF NOT EXISTS match_facts jsonb;

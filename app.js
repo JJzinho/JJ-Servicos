@@ -89,6 +89,10 @@ async function api(path, method = 'GET', data) {
   }
   const result = await response.json();
   if (!response.ok) {
+    if (result.code === 'PROFILE_INCOMPLETE' && user) {
+      user.profile.complete = false;
+      go('perfil');
+    }
     if (response.status === 401 && user) {
       user = null;
       go('entrar');
@@ -117,12 +121,6 @@ const note = '<p class="error" role="alert"></p>';
 const submit = (label) =>
   note +
   `<button class="primary" type="submit">${label} ${icon('arrow-right')}</button>`;
-const tagsField = (label, key, value) =>
-  input(label, key, (value || []).join(', '), {
-    required: false,
-    max: 1200,
-    hint: 'Separe as competências por vírgulas.',
-  });
 const number = (label, key, value) =>
   input(label, key, value ?? 0, {
     type: 'number',
@@ -180,40 +178,167 @@ const menu = {
 function shell(content) {
   const path = route().split('/')[0];
   return `<header class="top">${brand}<div class="account"><span>${esc(user.name)} · ${labels[user.role]}</span><button class="outline" data-action="logout">${icon('logout')} Sair</button></div></header>
-  <div class="workspace"><nav aria-label="Navegação principal">${menu[user.role].map(([p, t, i]) => `<a href="#${p}" ${path === p || (path === 'vaga' && p === 'vagas') ? 'aria-current="page"' : ''}>${icon(i)}${t}</a>`).join('')}</nav><main class="panel">${content}</main></div>`;
+  <div class="workspace"><nav aria-label="Navegação principal">${(user.role === 'admin' || user.profile.complete ? menu[user.role] : menu[user.role].filter(([p]) => p === 'perfil')).map(([p, t, i]) => `<a href="#${p}" ${path === p || (path === 'vaga' && p === 'vagas') ? 'aria-current="page"' : ''}>${icon(i)}${t}</a>`).join('')}</nav><main class="panel">${content}</main></div>`;
 }
 function heading(title, desc = '', action = '') {
   return `<div class="heading"><div><h1>${title}</h1>${desc ? `<p>${desc}</p>` : ''}</div>${action}</div>`;
 }
+const catalog = {
+  roles: [
+    'Atendente de loja',
+    'Operador de caixa',
+    'Auxiliar administrativo',
+    'Recepcionista',
+    'Vendedor',
+    'Repositor',
+    'Estoquista',
+    'Auxiliar de logística',
+    'Auxiliar de cozinha',
+    'Garçom',
+    'Auxiliar de serviços gerais',
+    'Assistente de atendimento',
+  ],
+  hard: [
+    'Atendimento ao cliente',
+    'Ponto de venda',
+    'Operação de caixa',
+    'Informática básica',
+    'Excel',
+    'Controle de estoque',
+    'Vendas',
+    'Organização de documentos',
+    'Emissão de notas fiscais',
+    'Preparo de alimentos',
+    'Separação de pedidos',
+    'Higienização de ambientes',
+  ],
+  soft: [
+    'Comunicação',
+    'Organização',
+    'Trabalho em equipe',
+    'Pontualidade',
+    'Proatividade',
+    'Atenção aos detalhes',
+    'Adaptabilidade',
+    'Resolução de problemas',
+    'Empatia',
+    'Responsabilidade',
+  ],
+};
+const clean = (text) =>
+  text
+    .trim()
+    .normalize('NFD')
+    .replace(/\p{M}/gu, '')
+    .toLowerCase()
+    .replace(/\s+/g, ' ');
+function optionTag(key, text, checked) {
+  return `<label class="pick"><input type="checkbox" name="${key}" value="${esc(text)}" ${checked ? 'checked' : ''}><span>${esc(text)}</span></label>`;
+}
+function checklist(label, key, preset, selected = []) {
+  const names = new Map([...preset, ...selected].map((s) => [clean(s), s]));
+  const checked = new Set(selected.map(clean));
+  return `<fieldset class="choice-set" data-group="${key}"><legend>${label}</legend><div class="picks">${[...names.values()].map((s) => optionTag(key, s, checked.has(clean(s)))).join('')}</div>
+    <div class="add-option"><input aria-label="Outra opção para ${label}" maxlength="${key === 'roles' ? 120 : 80}" placeholder="Outra opção"><button type="button" class="outline" data-add>Adicionar</button></div></fieldset>`;
+}
+function roleDetails(role) {
+  return `<fieldset class="role-entry" data-function="${esc(role.title)}"><legend>${esc(role.title)}</legend>
+  ${number('Anos de experiência nesta função', 'roleYears', role.years)}
+  ${area('Resumo da experiência nesta função', 'roleSummary', role.summary || '', 2400, true)}</fieldset>`;
+}
+function showRole(input) {
+  const container = input.form.querySelector('.role-details');
+  let entry = [...container.children].find(
+    (el) => clean(el.dataset.function) === clean(input.value),
+  );
+  if (!entry && input.checked) {
+    container.insertAdjacentHTML(
+      'beforeend',
+      roleDetails({ title: input.value, years: 0 }),
+    );
+    return;
+  }
+  if (entry) {
+    entry.disabled = !input.checked;
+    entry.hidden = !input.checked;
+  }
+}
+function locationFields(a = {}) {
+  return `<fieldset class="location-fields"><legend>Endereço</legend><div class="form-grid">
+    ${input('CEP', 'cep', a.cep, { max: 9, extra: 'inputmode="numeric" pattern="[0-9]{5}-?[0-9]{3}" autocomplete="postal-code" placeholder="00000-000"' })}
+    <small role="status" class="cep-status"></small>
+    ${input('Rua ou avenida', 'street', a.street, { max: 180 })}${input('Número', 'number', a.number, { max: 20, hint: 'Se não houver número, use S/N.' })}
+    ${input('Complemento (opcional)', 'complement', a.complement, { required: false })}${input('Bairro', 'district', a.district)}
+    ${input('Cidade', 'city', a.city)}${input('UF', 'state', a.state, { max: 2, extra: 'pattern="[A-Za-z]{2}" placeholder="PE"' })}</div></fieldset>`;
+}
+function readAddress(form) {
+  const a = Object.fromEntries(
+    ['cep', 'street', 'number', 'complement', 'district', 'city', 'state'].map(
+      (k) => [k, form.elements[k].value.trim()],
+    ),
+  );
+  a.state = a.state.toUpperCase();
+  return a;
+}
+function values(form, key) {
+  return new FormData(form).getAll(key);
+}
+function collectedSkills(form) {
+  return { hard: values(form, 'hard'), soft: values(form, 'soft') };
+}
 function profilePage() {
   const p = user.profile,
     company = user.role === 'company';
+  const roles =
+    p.roles ??
+    (p.occupation
+      ? [
+          {
+            title: p.occupation,
+            years: p.experience,
+            summary: p.experienceText,
+          },
+        ]
+      : []);
   const fields = company
     ? input('Setor de atuação', 'sector', p.sector) +
       input('Pessoa responsável', 'contact', p.contact)
-    : input('Telefone de contato', 'phone', p.phone, { type: 'tel', max: 35 }) +
-      input('Função de referência', 'occupation', p.occupation, {
-        hint: 'Exemplo: Atendente de loja.',
+    : input('CPF', 'cpf', p.cpf, {
+        max: 14,
+        extra: 'inputmode="numeric" placeholder="000.000.000-00"',
       }) +
-      number('Anos de experiência nessa função', 'experience', p.experience) +
+      input('Telefone de contato', 'phone', p.phone, { type: 'tel', max: 35 }) +
       select('Formação', 'school', schools, p.school) +
       select('Disponibilidade', 'availability', shifts, p.availability);
   return (
-    heading(company ? 'Minha empresa' : 'Meu perfil', esc(user.email)) +
-    `<form id="profile" class="sheet"><div class="form-grid">${input(company ? 'Nome da empresa' : 'Nome completo', 'name', user.name)}
-    ${input('Cidade', 'city', p.city)}${fields}</div>
+    heading(
+      company ? 'Minha empresa' : 'Meu perfil',
+      p.complete
+        ? esc(user.email)
+        : 'Conclua o cadastro para acessar o painel.',
+    ) +
+    `<form id="profile" class="sheet"><div class="form-grid">${input(company ? 'Nome da empresa' : 'Nome completo', 'name', user.name)}${fields}</div>
+    ${locationFields(p.address || { city: p.city })}
     ${
       company
         ? ''
-        : area(
-            'Resumo de formação e experiências',
-            'experienceText',
-            p.experienceText,
-            2400,
+        : checklist(
+            'Funções de referência',
+            'roles',
+            catalog.roles,
+            roles.map((r) => r.title),
           ) +
-          tagsField('Competências técnicas', 'hard', p.hard) +
-          tagsField('Competências comportamentais', 'soft', p.soft) +
-          `<label class="check"><input type="checkbox" name="consent" ${user.consent_at ? 'checked' : ''}><span>Autorizo a JJ Serviços a incluir meu perfil na triagem e compartilhar meus dados profissionais e de contato com as empresas para cujas vagas eu for selecionado.</span></label>`
+          '<small>Marque suas funções. Para primeiro emprego, informe zero anos e descreva cursos ou atividades relacionados.</small><div class="role-details">' +
+          roles.map(roleDetails).join('') +
+          '</div>' +
+          checklist('Competências técnicas', 'hard', catalog.hard, p.hard) +
+          checklist(
+            'Competências comportamentais',
+            'soft',
+            catalog.soft,
+            p.soft,
+          ) +
+          `<label class="check"><input type="checkbox" name="consent" ${user.consent_at ? 'checked' : ''}><span>Autorizo a JJ Serviços a incluir meu perfil na triagem e compartilhar meus dados profissionais e de contato com as empresas para cujas vagas eu for selecionado. A análise com IA usa competências da vaga e a distância aproximada entre os CEPs.</span></label>`
     }
     ${submit('Salvar cadastro')}</form>${company ? '' : `<details class="danger"><summary>Excluir minha conta</summary><form id="delete"><p>A exclusão remove seu perfil, suas participações e seus avisos.</p>${input('Confirme sua senha', 'password', '', { type: 'password', max: 128 })}${submit('Excluir definitivamente')}</form></details>`}`
   );
@@ -235,10 +360,11 @@ function newJob() {
     ) +
     `<form id="new-job" class="sheet">
     ${input('Título da vaga', 'title')}${area('Descrição da função', 'description', '', 4000, true)}<div class="form-grid">
-    ${input('Cidade', 'city', user.profile.city)}${select('Jornada', 'schedule', shifts)}
+    ${select('Jornada', 'schedule', shifts)}
     ${select('Escolaridade mínima', 'school', schools)}${number('Anos de experiência desejáveis na função', 'desiredExperience')}</div>
+    ${locationFields(user.profile.address)}
     <label class="check"><input type="checkbox" name="locationRequired">Exigir que o candidato resida na mesma cidade</label>
-    ${tagsField('Competências obrigatórias', 'required')}${tagsField('Competências técnicas desejáveis', 'hard')}${tagsField('Competências comportamentais desejáveis', 'soft')}
+    ${checklist('Competências obrigatórias', 'required', [...catalog.hard, ...catalog.soft])}${checklist('Competências técnicas desejáveis', 'hard', catalog.hard)}${checklist('Competências comportamentais desejáveis', 'soft', catalog.soft)}
     ${submit('Abrir vaga para triagem')}</form>`
   );
 }
@@ -341,11 +467,17 @@ function cards(list, job, review) {
       (
         c,
         index,
-      ) => `<article class="person"><div class="person-head"><div><h3>${esc(c.name)}</h3><small>${esc(c.profile.occupation)} · ${esc(c.profile.city)}</small></div><span class="score">${c.score}/100</span></div>
-    <p>${esc(c.profile.school)} · ${c.profile.experience} ano(s) na função · ${esc(c.profile.availability)}</p>
+      ) => `<article class="person"><div class="person-head"><div><h3>${esc(c.name)}</h3><small>${esc(c.profile.city)}</small></div><span class="score">${c.score}/100</span></div>
+    <p>${esc(c.profile.school)} · ${esc(c.profile.availability)}</p>
     <div class="tags">${[...c.profile.hard, ...c.profile.soft].map((t) => `<span>${esc(t)}</span>`).join('')}</div>
     ${matchEvidence(c.evidence)}
-    ${c.profile.experienceText ? `<p class="prose">${esc(c.profile.experienceText)}</p>` : ''}
+    ${c.profile.roles.map((r) => `<div><strong>${esc(r.title)} · ${esc(r.years)} ano(s)</strong><p class="prose">${esc(r.summary)}</p></div>`).join('')}
+    ${
+      c.facts
+        ? `<p><strong>Distância até a vaga</strong> · ${c.facts.km == null ? 'Sem coordenadas suficientes' : Number(c.facts.km).toLocaleString('pt-BR') + ' km em linha reta (aprox. pelos CEPs)'}</p>
+      <div><button class="outline" type="button" data-analysis="${esc(c.id)}">Analisar habilidades e distância com IA</button><p class="analysis-result" role="status"></p></div>`
+        : ''
+    }
     ${
       review
         ? `<small>Experiência ${c.parts.experience}/40 · Competências ${c.parts.skills}/25 · Região ${c.parts.region}/25 · Disponibilidade ${c.parts.availability}/10</small>
@@ -361,7 +493,21 @@ async function jobPage(job) {
     candidate = user.role === 'candidate',
     admin = user.role === 'admin';
   const info = [
-    ['Cidade', d.city],
+    [
+      'Local de trabalho',
+      d.address
+        ? [
+            d.address.street,
+            d.address.number,
+            d.address.complement,
+            d.address.district,
+            d.city,
+            d.address.state,
+          ]
+            .filter(Boolean)
+            .join(', ')
+        : d.city,
+    ],
     ['Jornada', d.schedule],
     ['Escolaridade mínima', d.school],
     ['Experiência desejável', d.desiredExperience + ' ano(s)'],
@@ -409,6 +555,7 @@ async function jobPage(job) {
   return html;
 }
 async function content() {
+  if (user.role !== 'admin' && !user.profile.complete) return profilePage();
   const path = route(),
     candidate = user.role === 'candidate';
   if (path === 'perfil' && user.role !== 'admin') return profilePage();
@@ -507,7 +654,10 @@ root.addEventListener('submit', async (event) => {
   event.preventDefault();
   const form = event.target,
     data = Object.fromEntries(new FormData(form)),
-    button = form.querySelector('button[type="submit"],button');
+    button =
+      event.submitter ||
+      form.querySelector('button[type="submit"]') ||
+      form.querySelector('button');
   const error = form.querySelector('.error'),
     id = route().split('/')[1];
   button.disabled = true;
@@ -520,15 +670,31 @@ root.addEventListener('submit', async (event) => {
         role: access,
       });
       user = await api('/me');
-      go(register ? 'perfil' : 'inicio');
+      go(user.role !== 'admin' && !user.profile.complete ? 'perfil' : 'inicio');
     } else if (form.id === 'profile') {
-      await api('/me', 'PUT', { ...data, consent: !!data.consent });
+      const roles = [
+        ...form.querySelectorAll('.role-entry:not(:disabled)'),
+      ].map((entry) => ({
+        title: entry.dataset.function,
+        years: entry.querySelector('[name=roleYears]').value,
+        summary: entry.querySelector('[name=roleSummary]').value,
+      }));
+      await api('/me', 'PUT', {
+        ...data,
+        ...collectedSkills(form),
+        roles,
+        address: readAddress(form),
+        consent: !!data.consent,
+      });
       user = await api('/me');
       toast('Cadastro salvo.');
       go('inicio');
     } else if (form.id === 'new-job') {
       const job = await api('/jobs', 'POST', {
         ...data,
+        ...collectedSkills(form),
+        required: values(form, 'required'),
+        address: readAddress(form),
         locationRequired: !!data.locationRequired,
       });
       toast('Vaga aberta para triagem.');
@@ -620,3 +786,85 @@ window.addEventListener('hashchange', () => {
   window.scrollTo(0, 0);
 });
 boot();
+
+root.addEventListener('change', (event) => {
+  if (event.target.matches('input[name=roles]')) showRole(event.target);
+});
+root.addEventListener('keydown', (event) => {
+  if (event.key === 'Enter' && event.target.matches('.add-option input')) {
+    event.preventDefault();
+    event.target.parentElement.querySelector('button').click();
+  }
+});
+root.addEventListener('click', async (event) => {
+  const add = event.target.closest('[data-add]');
+  if (add) {
+    const group = add.closest('[data-group]'),
+      input = add.parentElement.querySelector('input');
+    const value = input.value.trim();
+    if (!value) {
+      input.focus();
+      return;
+    }
+    const picks = group.querySelector('.picks');
+    let item = [...picks.querySelectorAll('input')].find(
+      (el) => clean(el.value) === clean(value),
+    );
+    if (!item) {
+      picks.insertAdjacentHTML(
+        'beforeend',
+        optionTag(group.dataset.group, value, true),
+      );
+      item = picks.lastElementChild.querySelector('input');
+    }
+    item.checked = true;
+    if (item.name === 'roles') showRole(item);
+    input.value = '';
+    input.focus();
+    return;
+  }
+  const button = event.target.closest('[data-analysis]');
+  if (!button) return;
+  const result = button.nextElementSibling;
+  button.disabled = true;
+  result.textContent = 'Consultando o Gemini…';
+  try {
+    const report = await api(
+      '/jobs/' + route().split('/')[1] + '/analysis/' + button.dataset.analysis,
+      'POST',
+    );
+    result.textContent = report.competencias + ' ' + report.proximidade;
+    button.hidden = true;
+  } catch (error) {
+    result.textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
+});
+root.addEventListener('input', async (event) => {
+  const input = event.target;
+  if (input.name !== 'cep') return;
+  const form = input.form,
+    cep = input.value.trim().replace('-', ''),
+    status = form.querySelector('.cep-status');
+  const ticket = String(Number(input.dataset.request || 0) + 1);
+  input.dataset.request = ticket;
+  if (!/^\d{8}$/.test(cep)) {
+    status.textContent = '';
+    return;
+  }
+  status.textContent = 'Buscando endereço…';
+  const keys = ['street', 'district', 'city', 'state'];
+  const previous = keys.map((k) => form.elements[k].value);
+  try {
+    const found = await api('/cep/' + cep);
+    if (input.dataset.request !== ticket) return;
+    keys.forEach((k, i) => {
+      if (form.elements[k].value === previous[i])
+        form.elements[k].value = found[k] || '';
+    });
+    status.textContent = 'Confira o endereço e informe o número.';
+  } catch (error) {
+    if (input.dataset.request === ticket) status.textContent = error.message;
+  }
+});
