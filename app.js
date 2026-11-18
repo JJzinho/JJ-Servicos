@@ -303,6 +303,31 @@ function overview(jobs) {
     )
   );
 }
+function aiPanel(job) {
+  if (
+    !job.details.desiredExperience &&
+    !job.details.hard.length &&
+    !job.details.soft.length
+  )
+    return '';
+  const heading = '<h3>Equivalências com Gemini</h3>';
+  const state = job.ai_match;
+  if (!state)
+    return `<form class="sheet" id="ai-generate">${heading}<p>O Gemini consulta o vocabulário da vaga. Revise os sinônimos sugeridos antes de calcular as recomendações.</p>${submit('Consultar Gemini')}</form>`;
+  if (!state.suggestions.length)
+    return `<div class="sheet">${heading}<p>O Gemini não encontrou equivalências claras. Revise os perfis pela pontuação original.</p></div>`;
+  const choices = state.suggestions
+    .map(
+      (s, i) =>
+        `<label class="check"><input type="checkbox" name="selected" value="${i}" ${state.approved.includes(i) ? 'checked' : ''}><span>${esc(s.term)} ⇄ ${esc(s.alias)} <small>(${esc(s.type)})</small></span></label>`,
+    )
+    .join('');
+  return `<form class="sheet" id="ai-terms" data-version="${esc(state.version)}">${heading}<p>Marque os termos que têm o mesmo significado nesta vaga. Ao aplicar, os perfis serão reordenados e os cinco primeiros ficarão marcados para sua revisão.</p>${choices}${submit('Aplicar e recomendar perfis')}</form>`;
+}
+function matchEvidence(evidence) {
+  if (!evidence?.length) return '';
+  return `<div><strong>Equivalências que contribuíram para a nota</strong><ul>${evidence.map(({ term, alias }) => `<li>Vaga: ${esc(term)} · Perfil: ${esc(alias)}</li>`).join('')}</ul></div>`;
+}
 function cards(list, job, review) {
   if (!list.length)
     return empty(
@@ -319,6 +344,7 @@ function cards(list, job, review) {
       ) => `<article class="person"><div class="person-head"><div><h3>${esc(c.name)}</h3><small>${esc(c.profile.occupation)} · ${esc(c.profile.city)}</small></div><span class="score">${c.score}/100</span></div>
     <p>${esc(c.profile.school)} · ${c.profile.experience} ano(s) na função · ${esc(c.profile.availability)}</p>
     <div class="tags">${[...c.profile.hard, ...c.profile.soft].map((t) => `<span>${esc(t)}</span>`).join('')}</div>
+    ${matchEvidence(c.evidence)}
     ${c.profile.experienceText ? `<p class="prose">${esc(c.profile.experienceText)}</p>` : ''}
     ${
       review
@@ -372,9 +398,10 @@ async function jobPage(job) {
     '<h2>' +
     (review ? 'Revisar perfis compatíveis' : 'Perfis enviados') +
     '</h2>';
+  if (review) html += aiPanel(job);
   html +=
     review && list.length
-      ? `<form id="review"><p>Escolha até cinco perfis para enviar à empresa.</p>${cards(list, job, true)}${submit('Enviar lista à empresa')}</form>`
+      ? `<form id="review" data-version="${esc(job.ai_match?.version)}"><p>Escolha até cinco perfis para enviar à empresa.</p>${cards(list, job, true)}${submit('Enviar lista à empresa')}</form>`
       : cards(list, job, review);
   if (!admin && job.status !== 'closed')
     html +=
@@ -506,9 +533,20 @@ root.addEventListener('submit', async (event) => {
       });
       toast('Vaga aberta para triagem.');
       go('vaga/' + job.id);
+    } else if (form.id === 'ai-generate') {
+      await api('/jobs/' + id + '/ai/suggest', 'POST');
+      await render();
+    } else if (form.id === 'ai-terms') {
+      await api('/jobs/' + id + '/ai/terms', 'PUT', {
+        version: form.dataset.version,
+        selected: new FormData(form).getAll('selected').map(Number),
+      });
+      toast('Recomendações atualizadas.');
+      await render();
     } else if (form.id === 'review') {
       await api('/jobs/' + id + '/publish', 'POST', {
         candidates: new FormData(form).getAll('candidates'),
+        version: form.dataset.version || null,
       });
       toast('Lista enviada à empresa.');
       render();

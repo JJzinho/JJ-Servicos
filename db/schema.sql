@@ -54,3 +54,7 @@ CREATE TABLE IF NOT EXISTS jj.notices (
   read_at timestamptz
 );
 CREATE INDEX IF NOT EXISTS notices_candidate ON jj.notices(candidate_id, created_at DESC);
+
+-- Compatível com instalações anteriores. As listas já enviadas mantêm suas notas.
+ALTER TABLE jj.jobs ADD COLUMN IF NOT EXISTS ai_match jsonb;
+ALTER TABLE jj.selections ADD COLUMN IF NOT EXISTS ai_evidence jsonb NOT NULL DEFAULT '[]';

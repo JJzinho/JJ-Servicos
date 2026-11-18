@@ -29,6 +29,23 @@ O primeiro comando cria as tabelas no schema privado `jj` e pode ser repetido. O
 4. **Empresa** — abra a vaga para ver os contatos dos perfis enviados, marcar entrevistas, registrar o resultado e encerrar o processo.
 5. **Candidato** — acompanhe as etapas em **Meus processos** e os retornos em **Avisos**. O envio da lista, a mudança de etapa e o encerramento geram avisos dentro do sistema.
 
+## Recomendar perfis com Gemini
+
+Crie uma chave em um projeto do **Google AI Studio no nível gratuito** e configure o arquivo `.env`. A cota depende do modelo e do projeto. [Criar chave](https://aistudio.google.com/apikey) · [Preços e cota gratuita](https://ai.google.dev/gemini-api/docs/pricing) · [Limites](https://ai.google.dev/gemini-api/docs/rate-limits)
+
+```dotenv
+GEMINI_API_KEY=sua_chave
+GEMINI_MODEL=gemini-3.1-flash-lite
+```
+
+Se já tem uma instalação, preserve o seu `.env`, acrescente essas linhas, rode `npm run db:setup` para atualizar as tabelas e reinicie o Node com `npm start`.
+
+1. Na conta **Equipe JJ**, abra uma vaga em triagem e clique em **Consultar Gemini**. O Node envia as competências desejáveis e, quando a vaga pede experiência, o título do cargo. A consulta acontece uma vez por vaga após uma resposta válida. As sugestões ficam no Supabase.
+2. Revise as equivalências e clique em **Aplicar e recomendar perfis**. Por exemplo, ao aprovar “PDV” como equivalente a “ponto de venda”, um candidato que declarou “PDV” passa a pontuar nessa competência desejável. O cálculo usa dados locais e preserva os requisitos eliminatórios e os pesos da tabela abaixo. Desmarcar uma equivalência e reaplicar remove seu efeito.
+3. A equipe vê os perfis em ordem de pontuação, pode alterar a seleção e envia até cinco à empresa. Na lista publicada, a empresa vê a nota e as equivalências que contribuíram para ela.
+
+A chave fica no servidor. Os perfis, contatos e currículos ficam fora das requisições ao Gemini. Em caso de chave ausente, cota esgotada ou falha do serviço, a equipe ainda pode publicar a lista pela triagem local. Reabrir a vaga e recalcular com sugestões salvas não consome outra chamada à API.
+
 ## Regras da triagem
 
 Escolaridade abaixo do mínimo, falta de competência obrigatória e divergência de cidade quando a residência é exigida eliminam o perfil. A pontuação seguinte classifica os candidatos elegíveis.

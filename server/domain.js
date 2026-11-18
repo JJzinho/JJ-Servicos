@@ -98,7 +98,7 @@ export function jobData(body) {
     locationRequired: body.locationRequired === true,
   };
 }
-export function match(profile, job) {
+export function match(profile, job, approved = []) {
   if (
     !profile.city ||
     schools.indexOf(profile.school) < schools.indexOf(job.school)
@@ -113,24 +113,34 @@ export function match(profile, job) {
   )
     return null;
   const desired = [...new Set([...job.hard, ...job.soft].map(normalize))];
+  const evidence = [];
+  function equivalent(type, target, declared) {
+    const direct = declared.includes(normalize(target));
+    if (direct) return true;
+    const found = approved.find(
+      (item) =>
+        item.type === type &&
+        normalize(item.term) === normalize(target) &&
+        declared.includes(normalize(item.alias)),
+    );
+    if (found) evidence.push(found);
+    return Boolean(found);
+  }
+  const experience =
+    job.desiredExperience &&
+    profile.experience &&
+    equivalent('cargo', job.title, [normalize(profile.occupation)])
+      ? profile.experience
+      : 0;
+  const skillNames = [...skills];
+  const matched = desired.filter((term) =>
+    equivalent('competência', term, skillNames),
+  ).length;
   const parts = {
     experience: job.desiredExperience
-      ? Math.min(
-          40,
-          Math.round(
-            (40 *
-              (normalize(profile.occupation) === normalize(job.title)
-                ? profile.experience
-                : 0)) /
-              job.desiredExperience,
-          ),
-        )
+      ? Math.min(40, Math.round((40 * experience) / job.desiredExperience))
       : 40,
-    skills: desired.length
-      ? Math.round(
-          (25 * desired.filter((t) => skills.has(t)).length) / desired.length,
-        )
-      : 25,
+    skills: desired.length ? Math.round((25 * matched) / desired.length) : 25,
     region:
       city === target
         ? 25
@@ -143,5 +153,9 @@ export function match(profile, job) {
       ? 10
       : 4,
   };
-  return { parts, score: Object.values(parts).reduce((sum, n) => sum + n, 0) };
+  return {
+    parts,
+    ...(evidence.length ? { evidence } : {}),
+    score: Object.values(parts).reduce((sum, n) => sum + n, 0),
+  };
 }

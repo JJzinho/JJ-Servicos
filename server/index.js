@@ -1,6 +1,7 @@
 import express from 'express';
 import { rateLimit } from 'express-rate-limit';
 import { fileURLToPath } from 'node:url';
+import { suggestTerms, approveTerms, GeminiUnavailable } from './gemini.js';
 import { pool, transaction } from './db.js';
 import {
   allow,
@@ -142,7 +143,8 @@ function requireOpen(job) {
 api.get('/jobs', async (req, res) => {
   const { role, id } = req.user;
   const { rows } = await pool.query(
-    `SELECT j.*,a.name AS company,
+    `SELECT j.id,j.title,j.company_id,j.status,j.details,j.created_at,a.name AS company,
+    CASE WHEN $1='admin' THEN j.ai_match END AS ai_match,
     EXISTS(SELECT 1 FROM jj.interests i WHERE i.job_id=j.id AND i.candidate_id=$2) AS interested,
     s.stage FROM jj.jobs j JOIN jj.accounts a ON a.id=j.company_id
     LEFT JOIN jj.selections s ON s.job_id=j.id AND s.candidate_id=$2
@@ -186,12 +188,19 @@ async function ranking(db, job, ids) {
     ORDER BY created_at,id ${ids ? 'FOR SHARE' : ''}`,
     [ids ?? null],
   );
+  const approved =
+    job.ai_match?.approved.map((index) => job.ai_match.suggestions[index]) ??
+    [];
   return rows
     .flatMap((candidate) => {
-      const result = match(candidate.profile, {
-        ...job.details,
-        title: job.title,
-      });
+      const result = match(
+        candidate.profile,
+        {
+          ...job.details,
+          title: job.title,
+        },
+        approved,
+      );
       return result ? [{ ...candidate, ...result }] : [];
     })
     .sort((a, b) => b.score - a.score);
@@ -201,6 +210,51 @@ api.get('/jobs/:id/review', allow('admin'), async (req, res) => {
   if (job.status !== 'triagem')
     fail(409, 'A triagem desta vaga já foi concluída.');
   res.json(await ranking(pool, job));
+});
+const generating = new Set();
+const geminiLimit = rateLimit({
+  windowMs: 60000,
+  limit: 10,
+  message: {
+    error: 'Aguarde um minuto antes de consultar o Gemini novamente.',
+  },
+});
+api.post(
+  '/jobs/:id/ai/suggest',
+  allow('admin'),
+  geminiLimit,
+  async (req, res) => {
+    const job = await jobFor(pool, req.params.id, req.user);
+    if (job.status !== 'triagem') fail(409, 'Esta vaga já saiu da triagem.');
+    if (job.ai_match) return res.json(job.ai_match);
+    if (generating.has(job.id))
+      fail(409, 'Já existe uma consulta em andamento para esta vaga.');
+    generating.add(job.id);
+    try {
+      const suggestions = await suggestTerms(job);
+      const { rows } = await pool.query(
+        `UPDATE jj.jobs SET ai_match=coalesce(ai_match,$2::jsonb)
+      WHERE id=$1 AND status='triagem' RETURNING ai_match`,
+        [job.id, suggestions],
+      );
+      if (!rows.length) fail(409, 'Esta vaga já saiu da triagem.');
+      res.json(rows[0].ai_match);
+    } finally {
+      generating.delete(job.id);
+    }
+  },
+);
+api.put('/jobs/:id/ai/terms', allow('admin'), async (req, res) => {
+  await transaction(async (db) => {
+    const job = await jobFor(db, req.params.id, req.user, true);
+    if (job.status !== 'triagem') fail(409, 'Esta vaga já saiu da triagem.');
+    const updated = approveTerms(job.ai_match, req.body);
+    await db.query('UPDATE jj.jobs SET ai_match=$2 WHERE id=$1', [
+      job.id,
+      updated,
+    ]);
+  });
+  res.json({ ok: true });
 });
 api.post('/jobs/:id/publish', allow('admin'), async (req, res) => {
   const ids = req.body.candidates;
@@ -217,13 +271,24 @@ api.post('/jobs/:id/publish', allow('admin'), async (req, res) => {
     const job = await jobFor(db, req.params.id, req.user, true);
     if (job.status !== 'triagem')
       fail(409, 'A triagem desta vaga já foi concluída.');
+    if ((req.body.version ?? null) !== (job.ai_match?.version ?? null))
+      fail(
+        409,
+        'As equivalências mudaram. Atualize a lista antes de enviá-la.',
+      );
     const list = await ranking(db, job, ids);
     if (list.length !== ids.length)
       fail(409, 'Um perfil mudou. Atualize a triagem.');
     for (const [index, candidate] of list.entries()) {
       await db.query(
-        'INSERT INTO jj.selections(job_id,candidate_id,position,score) VALUES ($1,$2,$3,$4)',
-        [job.id, candidate.id, index + 1, candidate.score],
+        'INSERT INTO jj.selections(job_id,candidate_id,position,score,ai_evidence) VALUES ($1,$2,$3,$4,$5)',
+        [
+          job.id,
+          candidate.id,
+          index + 1,
+          candidate.score,
+          JSON.stringify(candidate.evidence ?? []),
+        ],
       );
       await notify(
         db,
@@ -248,7 +313,7 @@ async function notify(db, id, message) {
 api.get('/jobs/:id/shortlist', allow('company', 'admin'), async (req, res) => {
   const job = await jobFor(pool, req.params.id, req.user);
   const { rows } = await pool.query(
-    `SELECT a.id,a.name,a.email,a.profile,s.stage,s.score FROM jj.selections s JOIN jj.accounts a ON a.id=s.candidate_id
+    `SELECT a.id,a.name,a.email,a.profile,s.stage,s.score,s.ai_evidence AS evidence FROM jj.selections s JOIN jj.accounts a ON a.id=s.candidate_id
     WHERE s.job_id=$1 AND a.consent_at IS NOT NULL ORDER BY s.position`,
     [job.id],
   );
@@ -327,25 +392,27 @@ for (const path of [
 }
 app.get('/', (req, res) => res.sendFile('index.html', { root }));
 app.use((err, req, res, next) => {
+  if (err instanceof GeminiUnavailable)
+    return res.status(503).json({ error: err.message });
   if (err.code === '23505')
     return res
       .status(409)
       .json({ error: 'Já existe um cadastro com esses dados.' });
   const status = err.status || 500;
   if (status >= 500) console.error('Falha na operação', err.code || err.name);
-  res
-    .status(status)
-    .json({
-      error:
-        status >= 500
-          ? 'Não foi possível concluir a operação.'
-          : err.type === 'entity.parse.failed'
-            ? 'JSON inválido.'
-            : err.message,
-    });
+  res.status(status).json({
+    error:
+      status >= 500
+        ? 'Não foi possível concluir a operação.'
+        : err.type === 'entity.parse.failed'
+          ? 'JSON inválido.'
+          : err.message,
+  });
 });
 try {
-  await pool.query('SELECT 1 FROM jj.accounts LIMIT 0');
+  await pool.query(
+    'SELECT j.ai_match,s.ai_evidence FROM jj.jobs j, jj.selections s LIMIT 0',
+  );
   const port = Number(process.env.PORT || 3000);
   app.listen(port, '127.0.0.1', () =>
     console.log('JJ Serviços em http://localhost:' + port),
