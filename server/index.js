@@ -1,0 +1,360 @@
+import express from 'express';
+import { rateLimit } from 'express-rate-limit';
+import { fileURLToPath } from 'node:url';
+import { pool, transaction } from './db.js';
+import {
+  allow,
+  authenticated,
+  cookieHash,
+  emailOf,
+  hashPassword,
+  passwordMatches,
+  setCookie,
+  startSession,
+} from './auth.js';
+import {
+  choice,
+  fail,
+  field,
+  jobData,
+  match,
+  profileData,
+  stages,
+} from './domain.js';
+
+const app = express();
+const api = express.Router();
+app.disable('x-powered-by');
+app.use((req, res, next) => {
+  res.set('X-Content-Type-Options', 'nosniff');
+  res.set(
+    'Content-Security-Policy',
+    "default-src 'self'; object-src 'none'; frame-ancestors 'none'; base-uri 'none'; form-action 'self'",
+  );
+  next();
+});
+app.use('/api', api);
+api.use(
+  (req, res, next) => {
+    res.set('Cache-Control', 'no-store');
+    if (!['GET', 'HEAD'].includes(req.method) && !req.is('application/json'))
+      fail(415, 'Envie os dados como JSON.');
+    if (
+      req.headers.origin &&
+      req.headers.origin !== 'http://' + req.headers.host
+    )
+      fail(403, 'Origem inválida.');
+    next();
+  },
+  express.json({ limit: '32kb' }),
+);
+const authLimit = rateLimit({
+  windowMs: 10 * 60 * 1000,
+  limit: 50,
+  skipSuccessfulRequests: true,
+  message: { error: 'Muitas tentativas. Aguarde alguns minutos.' },
+});
+
+api.post('/register', authLimit, async (req, res) => {
+  const { role, password } = req.body;
+  choice(role, ['company', 'candidate'], 'tipo de conta');
+  const name = field(req.body.name, 'nome');
+  const email = emailOf(req.body.email),
+    hash = await hashPassword(password);
+  const token = await transaction(async (db) => {
+    const result = await db.query(
+      'INSERT INTO jj.accounts(role,email,password_hash,name) VALUES ($1,$2,$3,$4) RETURNING id',
+      [role, email, hash, name],
+    );
+    return startSession(db, result.rows[0].id);
+  });
+  setCookie(res, token);
+  res.status(201).json({ ok: true });
+});
+api.post('/login', authLimit, async (req, res) => {
+  const { role, password } = req.body;
+  const account = (
+    await pool.query(
+      'SELECT id,role,password_hash FROM jj.accounts WHERE email=$1',
+      [emailOf(req.body.email)],
+    )
+  ).rows[0];
+  if (
+    !(await passwordMatches(password, account?.password_hash)) ||
+    !account ||
+    account.role !== role
+  ) {
+    fail(401, 'Confira o e-mail, a senha e o tipo de acesso.');
+  }
+  setCookie(res, await startSession(pool, account.id));
+  res.json({ ok: true });
+});
+api.use(authenticated);
+api.get('/me', (req, res) => res.json(req.user));
+api.post('/logout', async (req, res) => {
+  await pool.query('DELETE FROM jj.sessions WHERE token_hash=$1', [
+    cookieHash(req),
+  ]);
+  res.clearCookie('jj_session', { path: '/' }).json({ ok: true });
+});
+api.put('/me', allow('candidate', 'company'), async (req, res) => {
+  const name = field(req.body.name, 'nome');
+  const profile = profileData(req.user.role, req.body);
+  const consent = req.user.role === 'candidate' && req.body.consent === true;
+  await pool.query(
+    `UPDATE jj.accounts SET name=$2,profile=$3,consent_at=
+    CASE WHEN $4 THEN coalesce(consent_at, now()) ELSE NULL END WHERE id=$1`,
+    [req.user.id, name, profile, consent],
+  );
+  res.json({ ok: true });
+});
+api.delete('/me', allow('candidate'), authLimit, async (req, res) => {
+  const { rows } = await pool.query(
+    'SELECT password_hash FROM jj.accounts WHERE id=$1',
+    [req.user.id],
+  );
+  if (!(await passwordMatches(req.body.password, rows[0].password_hash)))
+    fail(400, 'Confira sua senha.');
+  await pool.query('DELETE FROM jj.accounts WHERE id=$1', [req.user.id]);
+  res.clearCookie('jj_session', { path: '/' }).json({ ok: true });
+});
+
+const uuid = /^[0-9a-f]{8}-(?:[0-9a-f]{4}-){3}[0-9a-f]{12}$/i;
+api.param('id', (req, res, next, value) => {
+  if (!uuid.test(value)) fail(404, 'Vaga não encontrada.');
+  next();
+});
+async function jobFor(db, id, user, lock = false) {
+  const job = (
+    await db.query(
+      `SELECT j.*,a.name AS company FROM jj.jobs j JOIN jj.accounts a ON a.id=j.company_id
+    WHERE j.id=$1 ${lock ? 'FOR UPDATE OF j' : ''}`,
+      [id],
+    )
+  ).rows[0];
+  if (!job || (user.role === 'company' && job.company_id !== user.id))
+    fail(404, 'Vaga não encontrada.');
+  return job;
+}
+function requireOpen(job) {
+  if (job.status === 'closed') fail(409, 'Esta vaga foi encerrada.');
+}
+api.get('/jobs', async (req, res) => {
+  const { role, id } = req.user;
+  const { rows } = await pool.query(
+    `SELECT j.*,a.name AS company,
+    EXISTS(SELECT 1 FROM jj.interests i WHERE i.job_id=j.id AND i.candidate_id=$2) AS interested,
+    s.stage FROM jj.jobs j JOIN jj.accounts a ON a.id=j.company_id
+    LEFT JOIN jj.selections s ON s.job_id=j.id AND s.candidate_id=$2
+    WHERE $1='admin' OR ($1='company' AND j.company_id=$2)
+    OR ($1='candidate' AND (j.status<>'closed' OR s.stage IS NOT NULL OR EXISTS
+      (SELECT 1 FROM jj.interests i WHERE i.job_id=j.id AND i.candidate_id=$2)))
+    ORDER BY j.created_at DESC,j.id`,
+    [role, id],
+  );
+  res.json(rows);
+});
+api.post('/jobs', allow('company'), async (req, res) => {
+  if (!req.user.profile.city)
+    fail(400, 'Complete o cadastro da empresa antes de abrir uma vaga.');
+  const title = field(req.body.title, 'título'),
+    details = jobData(req.body);
+  const { rows } = await pool.query(
+    'INSERT INTO jj.jobs(company_id,title,details) VALUES ($1,$2,$3) RETURNING id',
+    [req.user.id, title, details],
+  );
+  res.status(201).json(rows[0]);
+});
+api.post('/jobs/:id/interest', allow('candidate'), async (req, res) => {
+  if (!req.user.consent_at)
+    fail(400, 'Complete o perfil e autorize a participação na triagem.');
+  await transaction(async (db) => {
+    const job = await jobFor(db, req.params.id, req.user, true);
+    if (job.status !== 'triagem')
+      fail(409, 'A triagem desta vaga já terminou.');
+    await db.query(
+      'INSERT INTO jj.interests VALUES ($1,$2) ON CONFLICT DO NOTHING',
+      [job.id, req.user.id],
+    );
+  });
+  res.json({ ok: true });
+});
+async function ranking(db, job, ids) {
+  const { rows } = await db.query(
+    `SELECT id,name,profile,created_at FROM jj.accounts
+    WHERE role='candidate' AND consent_at IS NOT NULL AND ($1::uuid[] IS NULL OR id=ANY($1))
+    ORDER BY created_at,id ${ids ? 'FOR SHARE' : ''}`,
+    [ids ?? null],
+  );
+  return rows
+    .flatMap((candidate) => {
+      const result = match(candidate.profile, {
+        ...job.details,
+        title: job.title,
+      });
+      return result ? [{ ...candidate, ...result }] : [];
+    })
+    .sort((a, b) => b.score - a.score);
+}
+api.get('/jobs/:id/review', allow('admin'), async (req, res) => {
+  const job = await jobFor(pool, req.params.id, req.user);
+  if (job.status !== 'triagem')
+    fail(409, 'A triagem desta vaga já foi concluída.');
+  res.json(await ranking(pool, job));
+});
+api.post('/jobs/:id/publish', allow('admin'), async (req, res) => {
+  const ids = req.body.candidates;
+  if (
+    !Array.isArray(ids) ||
+    ids.length < 1 ||
+    ids.length > 5 ||
+    ids.some((id) => !uuid.test(id)) ||
+    new Set(ids).size !== ids.length
+  ) {
+    fail(400, 'Selecione de um a cinco perfis diferentes.');
+  }
+  await transaction(async (db) => {
+    const job = await jobFor(db, req.params.id, req.user, true);
+    if (job.status !== 'triagem')
+      fail(409, 'A triagem desta vaga já foi concluída.');
+    const list = await ranking(db, job, ids);
+    if (list.length !== ids.length)
+      fail(409, 'Um perfil mudou. Atualize a triagem.');
+    for (const [index, candidate] of list.entries()) {
+      await db.query(
+        'INSERT INTO jj.selections(job_id,candidate_id,position,score) VALUES ($1,$2,$3,$4)',
+        [job.id, candidate.id, index + 1, candidate.score],
+      );
+      await notify(
+        db,
+        candidate.id,
+        'Seu perfil foi enviado para a vaga ' +
+          job.title +
+          ' em ' +
+          job.company +
+          '.',
+      );
+    }
+    await db.query("UPDATE jj.jobs SET status='sent' WHERE id=$1", [job.id]);
+  });
+  res.json({ ok: true });
+});
+async function notify(db, id, message) {
+  await db.query(
+    'INSERT INTO jj.notices(candidate_id,message) VALUES ($1,$2)',
+    [id, message],
+  );
+}
+api.get('/jobs/:id/shortlist', allow('company', 'admin'), async (req, res) => {
+  const job = await jobFor(pool, req.params.id, req.user);
+  const { rows } = await pool.query(
+    `SELECT a.id,a.name,a.email,a.profile,s.stage,s.score FROM jj.selections s JOIN jj.accounts a ON a.id=s.candidate_id
+    WHERE s.job_id=$1 AND a.consent_at IS NOT NULL ORDER BY s.position`,
+    [job.id],
+  );
+  res.json(rows);
+});
+api.put('/jobs/:id/stage', allow('company'), async (req, res) => {
+  const stage = choice(req.body.stage, stages, 'etapa');
+  if (!uuid.test(req.body.candidate)) fail(400, 'Candidato inválido.');
+  await transaction(async (db) => {
+    const job = await jobFor(db, req.params.id, req.user, true);
+    requireOpen(job);
+    const { rows } = await db.query(
+      `SELECT s.stage FROM jj.selections s JOIN jj.accounts a ON a.id=s.candidate_id
+      WHERE job_id=$1 AND candidate_id=$2 AND a.consent_at IS NOT NULL FOR SHARE OF a`,
+      [job.id, req.body.candidate],
+    );
+    if (!rows.length) fail(404, 'Perfil indisponível.');
+    if (rows[0].stage === stage) return;
+    await db.query(
+      'UPDATE jj.selections SET stage=$3 WHERE job_id=$1 AND candidate_id=$2',
+      [job.id, req.body.candidate, stage],
+    );
+    await notify(
+      db,
+      req.body.candidate,
+      job.title + ' · ' + job.company + ' — ' + stage + '.',
+    );
+  });
+  res.json({ ok: true });
+});
+api.post('/jobs/:id/close', allow('company'), async (req, res) => {
+  await transaction(async (db) => {
+    const job = await jobFor(db, req.params.id, req.user, true);
+    if (job.status === 'closed') return;
+    await db.query("UPDATE jj.jobs SET status='closed' WHERE id=$1", [job.id]);
+    await db.query(
+      `INSERT INTO jj.notices(candidate_id,message)
+      SELECT candidate_id,$2 FROM (SELECT candidate_id FROM jj.interests WHERE job_id=$1
+        UNION SELECT candidate_id FROM jj.selections WHERE job_id=$1) participants`,
+      [
+        job.id,
+        'Processo encerrado para ' + job.title + ' em ' + job.company + '.',
+      ],
+    );
+  });
+  res.json({ ok: true });
+});
+api.get('/notices', allow('candidate'), async (req, res) => {
+  res.json(
+    (
+      await pool.query(
+        'SELECT * FROM jj.notices WHERE candidate_id=$1 ORDER BY created_at DESC,id',
+        [req.user.id],
+      )
+    ).rows,
+  );
+});
+api.post('/notices/read', allow('candidate'), async (req, res) => {
+  await pool.query(
+    'UPDATE jj.notices SET read_at=now() WHERE candidate_id=$1 AND read_at IS NULL',
+    [req.user.id],
+  );
+  res.json({ ok: true });
+});
+api.use((req, res) =>
+  res.status(404).json({ error: 'Operação desconhecida.' }),
+);
+const root = fileURLToPath(new URL('../', import.meta.url));
+for (const path of [
+  'index.html',
+  'styles.css',
+  'app.js',
+  'assets/favicon.svg',
+]) {
+  app.get('/' + path, (req, res) => res.sendFile(path, { root }));
+}
+app.get('/', (req, res) => res.sendFile('index.html', { root }));
+app.use((err, req, res, next) => {
+  if (err.code === '23505')
+    return res
+      .status(409)
+      .json({ error: 'Já existe um cadastro com esses dados.' });
+  const status = err.status || 500;
+  if (status >= 500) console.error('Falha na operação', err.code || err.name);
+  res
+    .status(status)
+    .json({
+      error:
+        status >= 500
+          ? 'Não foi possível concluir a operação.'
+          : err.type === 'entity.parse.failed'
+            ? 'JSON inválido.'
+            : err.message,
+    });
+});
+try {
+  await pool.query('SELECT 1 FROM jj.accounts LIMIT 0');
+  const port = Number(process.env.PORT || 3000);
+  app.listen(port, '127.0.0.1', () =>
+    console.log('JJ Serviços em http://localhost:' + port),
+  );
+} catch (err) {
+  console.error(
+    'Banco indisponível. Confira DATABASE_URL e execute npm run db:setup.',
+    err.code || err.name,
+  );
+  await pool.end();
+  process.exitCode = 1;
+}

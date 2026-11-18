@@ -1,119 +1,54 @@
-# JJ Serviços — Plataforma de recrutamento (MVP demonstrativo)
+# JJ Serviços
 
-Projeto de **HTML, CSS e JavaScript puro**, baseado na apresentação de 17 páginas **JJ Serviços — Recrutamento rápido e acessível para pequenos negócios**, idealizada por Tiago Pereira da Silva.
+Sistema local de recrutamento para pequenos negócios. A aplicação abre no login. Candidato e empresa criam contas próprias. A equipe JJ revisa os perfis compatíveis antes de enviá-los à empresa.
 
-É um **protótipo funcional de interface** para uma apresentação acadêmica: oferece telas responsivas, navegação, dados fictícios, cadastro, vagas, inscrições, pontuação e revisão humana, sem exigir instalação de pacotes ou servidor.
+## Rodar no Windows
 
-## Como executar (Windows, macOS ou Linux)
+Instale o Node.js 22.9 ou superior e abra um terminal na pasta do projeto.
 
-1. Extraia o ZIP em uma pasta.
-2. Dê **dois cliques em `index.html`**.
-3. O site será aberto no navegador. Recomendado: Chrome, Edge ou Firefox atualizados.
-4. Para recomeçar a demonstração, entre na área administrativa → **Configurações** → **Restaurar demonstração**.
-
-Não é necessário Node.js nem internet. Todas as rotas utilizam `#` (ex.: `index.html#/vagas`), para funcionar também a partir do arquivo local.
-
-## Contas de demonstração
-
-Na página **Entrar**, clique em **Acesso rápido de demonstração**, escolhendo o tipo de conta:
-
-| Perfil | E-mail exibido | Acesso |
-| --- | --- | --- |
-| Candidato | `candidato@demo.jj` | Painel, perfil, vagas, inscrições, notificações |
-| Empresa | `empresa@demo.jj` | Vagas, abertura de vaga, lista de talentos, etapas e configurações |
-| Administração | `admin@demo.jj` | Visão geral, fila de triagem, publicação de listas, relatórios CSV e restauração |
-
-**Atenção:** o login é somente uma simulação; não há senha real, backend, controle de permissões seguro ou dados sincronizados. Não insira informações pessoais verdadeiras.
-
-## Todas as telas incluídas
-
-### Institucionais e públicas
-1. Página inicial
-2. Catálogo de vagas com busca e filtros
-3. Detalhes de cada vaga e registro de interesse
-4. Para empresas
-5. Como funciona (incluindo critérios e pontuação)
-6. Planos e preços
-7. Sobre a JJ
-8. Privacidade
-9. Contato
-10. Entrar / escolher perfil
-11. Cadastrar candidato
-12. Cadastrar empresa
-
-### Área do candidato
-13. Painel do candidato
-14. Meu perfil (edição e exclusão local)
-15. Minhas candidaturas
-16. Notificações e atualização de leitura
-
-### Área da empresa
-17. Painel da empresa
-18. Minhas vagas
-19. Nova vaga (requisitos obrigatórios e desejáveis)
-20. Acompanhamento individual da vaga
-21. Candidatos recebidos
-22. Configurações da empresa
-
-### Área da administração
-23. Painel administrativo
-24. Todas as vagas
-25. Triagem individual e revisão humana (máximo de cinco perfis)
-26. Base de talentos
-27. Empresas cadastradas
-28. Configurações, exportação CSV e restauração de dados
-
-O projeto usa **uma aplicação de página única (SPA)**: todas as telas são renderizadas por `app.js` e a navegação ocorre sem atualização completa da página. Assim, uma única página HTML abriga todas as telas e cada uma tem endereço próprio.
-
-## Roteiro de apresentação (5 minutos)
-
-1. Abra `index.html`: mostre a página inicial, os benefícios e o catálogo de vagas.
-2. Entre como **empresa**: abra uma nova vaga, descreva os requisitos e veja o status **Em triagem**.
-3. Saia e entre como **administrador**: selecione a vaga e mostre a pontuação de experiência, habilidades, região e disponibilidade; escolha até 5 perfis e envie a lista.
-4. Volte para **empresa**: na vaga, confira a lista de candidatos e marque alguém como **Entrevista**.
-5. Entre como **candidato**: apresente o perfil, as candidaturas e as notificações. Para mostrar imediatamente uma alteração, entre na conta do candidato que foi selecionado — os profissionais de teste possuem e-mails individuais na base; o acesso ao protótipo é por e-mail, sem senha.
-
-## Como a compatibilidade funciona
-
-**Primeiro, requisitos obrigatórios:**
-- Escolaridade igual ou acima da mínima exigida.
-- Todas as competências obrigatórias informadas na vaga.
-- Mesma cidade, **somente se** a empresa marcar o requisito como eliminatório.
-
-Perfis que não atendem a esses critérios ficam fora da lista. Na segunda etapa, o sistema atribui até **100 pontos**:
-
-| Critério | Pontuação máxima | Regra demonstrativa |
-| --- | ---: | --- |
-| Experiência na função | 40 | Proporção dos anos declarados vs. experiência desejável |
-| Competências desejáveis | 25 | Proporção das habilidades desejáveis presentes no perfil |
-| Região | 25 | Mesma cidade = 25; outra cidade da região de demonstração = 17; demais = 5 |
-| Disponibilidade | 10 | Jornada igual, integral ou flexível = 10; demais = 4 |
-
-Uma vaga sem experiência mínima desejável ou habilidades desejáveis atribui o total desses componentes. **A nota não é decisão de contratação**, e a equipe administrativa revisa as listas antes da publicação. Nenhum filtro usa idade, sexo, gênero, raça, cor, religião, estado civil ou filhos.
-
-## Como os dados ficam salvos
-
-Os dados fictícios e as edições são guardados no `localStorage` sob a chave `jj-servicos-mvp-demo-v1`. No mesmo navegador, as mudanças permanecem após atualizar a aba. O botão de restauração gera novamente os dados fictícios iniciais. Navegadores distintos não compartilham dados.
-
-## Estrutura
-
-```text
-JJ_Servicos_Web/
-├── index.html              Entrada do site
-├── styles.css              Layout responsivo e identidade visual
-├── app.js                  Rotas, telas, modelos, dados e ações
-├── assets/
-│   └── favicon.svg         Ícone da marca JJ
-└── README.md               Guia do projeto e roteiro
+```powershell
+npm ci
+Copy-Item .env.example .env
 ```
 
-## O que NÃO está implementado (necessário em produção)
+No painel do seu projeto Supabase, abra **Connect → Session pooler** e copie a URI PostgreSQL. Em `.env`, substitua o valor de `DATABASE_URL` por essa URI com a senha **do banco**. Codifique caracteres especiais da senha na URI (por exemplo, `@` como `%40`). O arquivo é lido somente pelo servidor. Se a conexão exigir a autoridade certificadora do projeto, baixe o certificado no painel e configure `PG_CA_FILE` em `.env`. [Documentação de conexão do Supabase](https://supabase.com/docs/guides/database/connecting-to-postgres)
 
-- Login seguro, senha, recuperação de acesso e controle de autorização real.
-- Backend/API e banco de dados compartilhado (sugestão: Node.js + Express + PostgreSQL).
-- Integração real de e-mail, WhatsApp e notificações push.
-- Cobrança e gestão de assinaturas. Os valores R$ 79, R$ 149 e R$ 299 são hipotéticos, conforme o PDF.
-- Fluxo de privacidade e LGPD de produção (controlador/operador, política real, direitos, retenção, gestão de consentimento e incidentes).
-- Revisão de vieses e validação estatística das regras de pontuação em operação real.
+```powershell
+npm run db:setup
+npm run admin -- triagem@minhaempresa.com.br
+npm start
+```
 
-O MVP já está estruturado para **demonstrar visualmente e testar o fluxo**, mas não deve ser publicado como plataforma de recrutamento em produção sem essas etapas.
+O primeiro comando cria as tabelas no schema privado `jj` e pode ser repetido. O segundo cria a conta da equipe que poderá enviar as listas. Troque o endereço por um e-mail seu e guarde a senha gerada no terminal. Execute esse comando uma vez por conta da equipe. Abra **http://localhost:3000**. Para desenvolver com reinicialização automática, use `npm run dev`.
+
+## Percorrer um processo seletivo
+
+1. **Candidato** — clique em **Cadastre-se**, selecione **Candidato** e informe nome, e-mail e senha. Em **Meu perfil**, preencha cidade, contato, formação, função, experiência, competências e disponibilidade. Autorize a participação na triagem e salve. A autorização pode ser retirada no mesmo formulário. A exclusão da conta requer a senha.
+2. **Empresa** — cadastre a empresa e complete o setor, a cidade e o responsável. Em **Abrir vaga**, defina a função, a jornada e as exigências. A vaga entra em triagem. O candidato também pode registrar interesse pelo painel de vagas.
+3. **Equipe JJ** — entre pelo link **Acesso da equipe JJ**. Abra a vaga, confira o detalhamento das notas, revise a seleção e clique em **Enviar lista à empresa**. O sistema considera todo perfil autorizado e compatível, mesmo sem interesse registrado.
+4. **Empresa** — abra a vaga para ver os contatos dos perfis enviados, marcar entrevistas, registrar o resultado e encerrar o processo.
+5. **Candidato** — acompanhe as etapas em **Meus processos** e os retornos em **Avisos**. O envio da lista, a mudança de etapa e o encerramento geram avisos dentro do sistema.
+
+## Regras da triagem
+
+Escolaridade abaixo do mínimo, falta de competência obrigatória e divergência de cidade quando a residência é exigida eliminam o perfil. A pontuação seguinte classifica os candidatos elegíveis.
+
+| Critério | Máximo | Cálculo |
+| --- | ---: | --- |
+| Experiência | 40 | Anos na função de referência proporcionais ao desejado, até 40. A função é comparada ao título da vaga após normalização. |
+| Competências | 25 | Fração de competências desejáveis presentes no perfil. |
+| Região | 25 | Mesma cidade recebe 25. Duas cidades distintas entre Recife, Olinda, Jaboatão dos Guararapes, Paulista e Camaragibe recebem 17. Demais casos recebem 5. |
+| Disponibilidade | 10 | Turno coincidente, integral ou flexível recebe 10. Demais casos recebem 4. |
+
+Experiência ou competências desejáveis sem exigência recebem a pontuação máxima daquele critério. A comparação de texto ignora acentos, caixa e espaços excedentes. Empates priorizam o cadastro mais antigo e depois o identificador. A revisão humana publica de um a cinco perfis por vaga. Ao retirar o consentimento, o candidato sai da triagem e seus dados deixam de aparecer à empresa.
+
+## Arquitetura
+
+- Frontend responsivo em HTML, CSS e JavaScript, servido pelo próprio Node.
+- API Express com autenticação por e-mail e senha, hashes scrypt e sessões persistidas no PostgreSQL. O cookie HttpOnly identifica uma sessão de sete dias. Os dados e as permissões são conferidos no servidor.
+- PostgreSQL do Supabase acessado pelo driver `pg`. A aplicação usa contas próprias, sem depender de configuração do Supabase Auth. O servidor escuta na interface local `127.0.0.1`.
+- O protótipo anterior armazenava dados fictícios em cada navegador. As contas do sistema começam com a base vazia.
+
+## Testes
+
+Execute `npm test` para verificar os filtros e a pontuação. Para validar o fluxo completo na sua instância, percorra a sequência acima com um candidato cuja cidade, escolaridade e competências atendam à vaga.
