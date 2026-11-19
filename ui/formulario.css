@@ -1,0 +1,150 @@
+.choice-set,
+.location-fields {
+  min-width: 0;
+  margin: 0;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  padding: 16px;
+}
+.choice-set legend,
+.location-fields legend {
+  padding: 0 6px;
+  font-weight: 700;
+}
+.pick-help {
+  margin: 0 0 12px;
+  font-size: 14px;
+}
+.picks {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+.pick {
+  display: inline-flex;
+  flex-direction: row;
+  align-items: center;
+  gap: 7px;
+  max-width: 100%;
+  border: 1px solid var(--line);
+  border-radius: 7px;
+  padding: 6px 10px;
+  cursor: pointer;
+  font-size: 13px;
+  font-weight: 500;
+}
+.pick:has(:checked) {
+  background: #e4f0ed;
+  border-color: #66918a;
+}
+.pick input {
+  accent-color: var(--teal);
+  flex: none;
+}
+.add-option {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) max-content;
+  gap: 8px;
+  margin-top: 14px;
+}
+.add-option input {
+  min-width: 0;
+}
+.add-option button {
+  white-space: nowrap;
+}
+.reference-roles {
+  min-width: 0;
+}
+.role-details {
+  display: grid;
+  gap: 7px;
+  margin-top: 10px;
+}
+.role-details:not(:has(.role-entry:not([hidden]))) {
+  display: none;
+}
+.role-entry {
+  min-width: 0;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: white;
+}
+.role-entry summary {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto 8px;
+  align-items: center;
+  column-gap: 12px;
+  min-height: 46px;
+  padding: 9px 16px;
+  border-radius: inherit;
+  list-style: none;
+  font-weight: 650;
+  cursor: pointer;
+}
+.role-entry summary::-webkit-details-marker {
+  display: none;
+}
+.role-entry summary::after {
+  content: '';
+  width: 7px;
+  height: 7px;
+  border-right: 1.5px solid currentColor;
+  border-bottom: 1.5px solid currentColor;
+  transform: rotate(45deg);
+}
+.role-entry summary:hover,
+.role-entry[open] summary {
+  background: #f3f7f7;
+}
+.role-entry[open] summary::after {
+  transform: rotate(225deg);
+}
+.role-status {
+  color: var(--muted);
+  font-weight: 450;
+}
+.experience-fields {
+  display: grid;
+  grid-template-columns: minmax(125px, 165px) minmax(0, 1fr);
+  align-items: start;
+  gap: 14px;
+  min-width: 0;
+  margin: 0;
+  padding: 14px 16px;
+  border: 0;
+  border-top: 1px solid var(--line);
+}
+.experience-fields small {
+  font-weight: 400;
+}
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+.role-entry[hidden],
+button[hidden] {
+  display: none;
+}
+.cep-status {
+  align-self: center;
+}
+@media (max-width: 520px) {
+  .experience-fields {
+    grid-template-columns: minmax(0, 1fr);
+  }
+  .role-entry summary {
+    grid-template-columns: minmax(0, 1fr) 8px;
+    row-gap: 2px;
+  }
+  .role-status {
+    grid-column: 1;
+  }
+  .role-entry summary::after {
+    grid-column: 2;
+    grid-row: 1 / span 2;
+  }
+}

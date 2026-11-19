@@ -1,304 +1,726 @@
-/*
- * JJ Serviços — Protótipo navegável e offline
- * HTML + CSS + JavaScript puro | Persistência demonstrativa via localStorage
- * Dados, empresas e pessoas são fictícios. Sem backend ou autenticação real.
- */
-(() => {
-'use strict';
-const KEY = 'jj-servicos-mvp-demo-v1';
-const SCHOOL = {fundamental:'Ensino fundamental',medio:'Ensino médio',tecnico:'Ensino técnico',superior:'Ensino superior'};
-const SCHOOL_ORDER = ['fundamental','medio','tecnico','superior'];
-const AVAILS = ['Integral','Manhã','Tarde','Noite','Flexível'];
-const CITIES = ['Recife','Olinda','Jaboatão dos Guararapes','Paulista','Camaragibe','Outra cidade'];
-const SECTORS = ['Varejo','Alimentação','Serviços','Administrativo','Logística','Outros'];
-const money = n => Number(n || 0).toLocaleString('pt-BR',{style:'currency',currency:'BRL',maximumFractionDigits:0});
-const fmtDate = d => {try{return new Date(d).toLocaleDateString('pt-BR')}catch{return '—'}};
-const todayISO = () => new Date().toISOString();
-const ageText = date => {const days=Math.floor((Date.now()-new Date(date).getTime())/86400000); return days<1?'Hoje':days===1?'Ontem':`Há ${days} dias`};
-const id = prefix => prefix + '_' + Math.random().toString(36).slice(2,9);
-const esc = x => String(x??'').replace(/[&<>"']/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-const short = (v,len=80) => String(v||'').length>len?String(v).slice(0,len-1)+'…':String(v||'');
-const initials = v => String(v||'?').trim().split(/\s+/).slice(0,2).map(s=>s[0]).join('').toUpperCase();
-const cap = s => String(s||'').charAt(0).toUpperCase()+String(s||'').slice(1);
-const opts = (arr,selected) => arr.map(v=>`<option value="${esc(Array.isArray(v)?v[0]:v)}" ${String(selected)===String(Array.isArray(v)?v[0]:v)?'selected':''}>${esc(Array.isArray(v)?v[1]:v)}</option>`).join('');
-const link = (path) => '#'+path;
-const empty = (title,desc,action='') => `<div class="empty-state"><div class="feature-icon">${ic('inbox')}</div><h3>${esc(title)}</h3><p>${esc(desc)}</p>${action}</div>`;
+import {
+  esc,
+  input,
+  area,
+  select,
+  number,
+  catalog,
+  checklist,
+  referenceRoles,
+  collectRoles,
+  locationFields,
+  readAddress,
+  values,
+  collectedSkills,
+  bindFormControls,
+} from './ui/formulario.js';
+import { sectors } from './ui/setores.js';
+const paths = {
+  user: '<path d="M20 21a8 8 0 0 0-16 0"/><circle cx="12" cy="8" r="4"/>',
+  building:
+    '<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M8 21v-5h8v5M8 8h.01M16 8h.01M8 12h.01M16 12h.01"/>',
+  'arrow-right': '<path d="M5 12h14m-6-6 6 6-6 6"/>',
+  'arrow-left': '<path d="M19 12H5m6 6-6-6 6-6"/>',
+  briefcase:
+    '<rect x="3" y="7" width="18" height="14" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m-13 7h18"/>',
+  bell: '<path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/>',
+  users:
+    '<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2m14-16a4 4 0 0 1 0 8m6 8v-2a4 4 0 0 0-3-3.87"/><circle cx="9" cy="7" r="4"/>',
+  'map-pin':
+    '<path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/>',
+  layout:
+    '<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>',
+  file: '<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h8"/>',
+  plus: '<path d="M12 5v14M5 12h14"/>',
+  clock: '<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>',
+  logout:
+    '<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4m7 14 5-5-5-5m5 5H9"/>',
+  check: '<path d="m20 6-11 11-5-5"/>',
+  shield:
+    '<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/>',
+  inbox:
+    '<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 13h5l2 3h4l2-3h5"/>',
+  settings:
+    '<circle cx="12" cy="12" r="3"/><path d="M19 13.5a7 7 0 0 0 0-3l2-1.5-2-3.5-2.3.9a7 7 0 0 0-2.6-1.5L13.7 2h-3.4l-.4 2.9a7 7 0 0 0-2.6 1.5L5 5.5 3 9l2 1.5a7 7 0 0 0 0 3L3 15l2 3.5 2.3-.9a7 7 0 0 0 2.6 1.5l.4 2.9h3.4l.4-2.9a7 7 0 0 0 2.6-1.5l2.3.9L21 15z"/>',
+  'chevron-right': '<path d="m9 18 6-6-6-6"/>',
+};
+const root = document.querySelector('#app');
+const schools = ['Fundamental', 'Médio', 'Técnico', 'Superior'];
+const shifts = ['Integral', 'Manhã', 'Tarde', 'Noite', 'Flexível'];
+const stages = [
+  'Pré-selecionado',
+  'Entrevista',
+  'Contratado',
+  'Não selecionado',
+];
+const labels = {
+  candidate: 'Candidato',
+  company: 'Empresa',
+  admin: 'Equipe JJ',
+};
+const statusName = {
+  triagem: 'Em triagem',
+  sent: 'Lista enviada',
+  closed: 'Encerrada',
+};
+const icon = (name) =>
+  `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name] || ''}</svg>`;
+const brand =
+  '<div class="brand"><img src="/assets/favicon.svg" width="38" height="38" alt=""><span>JJ Serviços</span></div>';
+const route = () => location.hash.slice(1) || 'inicio';
+const go = (path) => {
+  if (route() === path) render();
+  else location.hash = path;
+};
+let user = null,
+  access = 'candidate',
+  revision = 0,
+  toastTimer;
+function toast(message) {
+  const el = document.querySelector('#toast');
+  el.textContent = message;
+  clearTimeout(toastTimer);
+  toastTimer = setTimeout(() => {
+    el.textContent = '';
+  }, 3500);
+}
+async function api(path, method = 'GET', data) {
+  const options = { method };
+  if (method !== 'GET') {
+    options.headers = { 'Content-Type': 'application/json' };
+    options.body = JSON.stringify(data ?? {});
+  }
+  let response;
+  try {
+    response = await fetch('/api' + path, options);
+  } catch {
+    throw new Error('Não foi possível acessar o servidor. Confira a conexão.');
+  }
+  const result = await response.json();
+  if (!response.ok) {
+    if (result.code === 'PROFILE_INCOMPLETE' && user) {
+      user.profile.complete = false;
+      go('perfil');
+    }
+    if (response.status === 401 && user) {
+      user = null;
+      go('entrar');
+    }
+    throw Object.assign(new Error(result.error), { status: response.status });
+  }
+  return result;
+}
+const note = '<p class="error" role="alert"></p>';
+const submit = (label) =>
+  note +
+  `<button class="primary" type="submit">${label} ${icon('arrow-right')}</button>`;
+const empty = (title, text) =>
+  `<div class="empty">${icon('inbox')}<strong>${esc(title)}</strong><p>${esc(text)}</p></div>`;
+const date = (value) => new Date(value).toLocaleDateString('pt-BR');
+const link = (path, text, kind = 'outline') =>
+  `<a class="${kind}" href="#${path}">${text}</a>`;
+const badge = (status) =>
+  `<span class="badge ${status}">${statusName[status]}</span>`;
+function authPage() {
+  const register = route() === 'cadastro';
+  if (register && access === 'admin') access = 'candidate';
+  const team = access === 'admin';
+  const roles = ['candidate', 'company']
+    .map(
+      (role) =>
+        `<button type="button" class="role" data-role="${role}" aria-pressed="${access === role}">${icon(role === 'candidate' ? 'user' : 'building')}${labels[role]}</button>`,
+    )
+    .join('');
+  document.title = (register ? 'Criar conta' : 'Entrar') + ' · JJ Serviços';
+  return `<header class="top">${brand}<span class="portal">Portal de recrutamento</span></header>
+  <main class="auth-wrap"><section class="auth-card"><div class="auth-band" aria-hidden="true"><i></i><b></b></div>
+  <div class="auth-content"><h1>${register ? 'Criar conta' : team ? 'Acesso da equipe' : 'Entrar na conta'}</h1>
+  ${register ? `<fieldset class="account-type"><legend>Tipo de conta</legend><div class="roles">${roles}</div></fieldset>` : `<p>${team ? 'Entre com seu acesso de triagem.' : 'Selecione seu perfil para acessar o painel.'}</p>${team ? '' : `<div class="roles" aria-label="Tipo de acesso">${roles}</div>`}`}
+  <form id="auth">${register ? input(access === 'company' ? 'Nome da empresa' : 'Nome completo', 'name', '', { extra: access === 'company' ? 'autocomplete="organization"' : 'autocomplete="name"' }) : ''}
+  ${input('E-mail', 'email', '', { type: 'email', max: 254, extra: 'autocomplete="email" placeholder="seu@email.com"' })}
+  ${input('Senha', 'password', '', { type: 'password', max: 128, extra: register ? 'minlength="8" autocomplete="new-password"' : 'autocomplete="current-password"', hint: register ? 'Use ao menos 8 caracteres.' : '' })}
+  ${submit(register ? 'Criar conta' : 'Entrar')}</form>
+  ${team ? '' : `<div class="auth-switch">${register ? 'Já tem uma conta?' : 'Ainda não tem uma conta?'} ${link(register ? 'entrar' : 'cadastro', register ? 'Entrar' : 'Cadastre-se', 'inline')}</div>`}
+  </div></section><button class="team-link" data-role="${team ? 'candidate' : 'admin'}">${icon(team ? 'arrow-left' : 'shield')}${team ? 'Voltar ao login' : 'Acesso da equipe JJ'}</button></main>`;
+}
+const menu = {
+  candidate: [
+    ['inicio', 'Painel', 'layout'],
+    ['perfil', 'Meu perfil', 'user'],
+    ['vagas', 'Vagas', 'briefcase'],
+    ['processos', 'Meus processos', 'file'],
+    ['avisos', 'Avisos', 'bell'],
+  ],
+  company: [
+    ['inicio', 'Painel', 'layout'],
+    ['vagas', 'Minhas vagas', 'briefcase'],
+    ['nova', 'Abrir vaga', 'plus'],
+    ['perfil', 'Minha empresa', 'building'],
+    ['configuracoes', 'Configurações da empresa', 'layout'],
+  ],
+  admin: [
+    ['inicio', 'Painel', 'layout'],
+    ['vagas', 'Triagem de vagas', 'briefcase'],
+  ],
+};
+function shell(content) {
+  const path = route().split('/')[0];
+  return `<header class="top">${brand}<div class="account"><span>${esc(user.name)} · ${labels[user.role]}</span><button class="outline" data-action="logout">${icon('logout')} Sair</button></div></header>
+  <div class="workspace"><nav aria-label="Navegação principal">${(user.role === 'admin' || user.profile.complete ? menu[user.role] : menu[user.role].filter(([p]) => p === 'perfil')).map(([p, t, i]) => `<a href="#${p}" ${path === p || (path === 'vaga' && p === 'vagas') ? 'aria-current="page"' : ''}>${icon(i)}${t}</a>`).join('')}</nav><main class="panel">${content}</main></div>`;
+}
+function heading(title, desc = '', action = '') {
+  return `<div class="heading"><div><h1>${title}</h1>${desc ? `<p>${desc}</p>` : ''}</div>${action}</div>`;
+}
+function profilePage() {
+  const p = user.profile,
+    company = user.role === 'company';
+  const roles =
+    p.roles ??
+    (p.occupation
+      ? [
+          {
+            title: p.occupation,
+            years: p.experience,
+            summary: p.experienceText,
+          },
+        ]
+      : []);
+  const phoneField = input('Telefone de contato', 'phone', p.phone, {
+    type: 'tel', max: 35, extra: 'autocomplete="tel" placeholder="(81) 99999-9999"',
+  });
+  const customSector = p.sector === 'Outro' ? p.otherSector : p.sector && !sectors.includes(p.sector) ? p.sector : '';
+  const selectedSector = customSector ? 'Outro' : p.sector;
+  const fields = company
+    ? input('CNPJ', 'cnpj', p.cnpj, { max: 18, extra: 'autocapitalize="characters" spellcheck="false" placeholder="00.000.000/0001-00"' }) +
+      `<label>Setor de atuação<select name="sector" required><option value="">Selecione um setor</option>${sectors.map(s => `<option ${s === selectedSector ? 'selected' : ''}>${esc(s)}</option>`).join('')}</select></label>
+      <div data-other-sector ${selectedSector === 'Outro' ? '' : 'hidden'}>${input('Qual é o setor de atuação?', 'otherSector', customSector, { required: selectedSector === 'Outro', extra: selectedSector === 'Outro' ? '' : 'disabled' })}</div>`
+    : input('CPF', 'cpf', p.cpf, {
+        max: 32,
+        extra: 'inputmode="numeric" placeholder="000.000.000-00"',
+      }) +
+      phoneField;
+  return (
+    heading(
+      company ? 'Minha empresa' : 'Meu perfil',
+      p.complete
+        ? esc(user.email)
+        : 'Conclua o cadastro para acessar o painel.',
+    ) +
+    `<form id="profile"><section class="sheet profile-section"><h2>${company ? 'Dados da empresa' : 'Dados pessoais'}</h2><div class="form-grid"><div class="profile-name">${input(company ? 'Nome da empresa' : 'Nome completo', 'name', user.name)}</div>${fields}</div>
+    ${company ? area('Descrição da empresa (opcional)', 'description', p.description, 2400) : ''}
+    ${locationFields(p.address || { city: p.city })}</section>
+    ${
+      company
+        ? `<section class="sheet profile-section"><h2>Dados do empresário</h2><div class="form-grid">${input('Nome completo', 'contact', p.contact, { extra: 'autocomplete="name"' })}${phoneField}</div></section>`
+        : `<section class="sheet profile-section"><h2>Perfil profissional</h2><div class="form-grid">${select('Formação', 'school', schools, p.school)}${select('Disponibilidade', 'availability', shifts, p.availability)}</div>` + referenceRoles(roles) +
+          '</section><section class="sheet profile-section"><h2>Competências</h2>' +
+          checklist('Competências técnicas', 'hard', catalog.hard, p.hard) +
+          checklist(
+            'Competências comportamentais',
+            'soft',
+            catalog.soft,
+            p.soft,
+          ) +
+          `</section><section class="sheet profile-section"><h2>Autorização para triagem</h2><label class="check"><input type="checkbox" name="consent" ${user.consent_at ? 'checked' : ''}><span>Autorizo a JJ Serviços a incluir meu perfil na triagem e compartilhar meus dados profissionais e de contato com as empresas para cujas vagas eu for selecionado. A análise com IA usa competências da vaga e a distância aproximada entre os CEPs.</span></label></section>`
+    }
+    ${submit('Salvar cadastro')}</form>${company ? '' : `<details class="danger"><summary>Excluir minha conta</summary><form id="delete"><p>A exclusão remove seu perfil, suas participações e seus avisos.</p>${input('Confirme sua senha', 'password', '', { type: 'password', max: 128 })}${submit('Excluir definitivamente')}</form></details>`}`
+  );
+}
+function companySettings() {
+  const settings = user.profile.settings || {};
+  return heading('Configurações da empresa') +
+    `<form id="company-settings" class="sheet profile-section"><h2>Estrutura da empresa</h2>
+    ${input('Quantidade de funcionários (opcional)', 'employeeCount', settings.employeeCount, { type: 'number', required: false, extra: 'min="0" step="1" inputmode="numeric"' })}
+    ${area('Setores internos (opcional)', 'departments', settings.departments, 2400)}
+    ${area('Informações adicionais (opcional)', 'notes', settings.notes, 2400)}
+    ${submit('Salvar configurações')}</form>`;
+}
+function newJob() {
+  if (!user.profile.city)
+    return (
+      heading('Abrir vaga') +
+      empty(
+        'Complete o cadastro da empresa',
+        'Informe a cidade, o setor e o responsável pela vaga.',
+      ) +
+      link('perfil', 'Completar cadastro')
+    );
+  return (
+    heading(
+      'Abrir vaga',
+      'Defina os requisitos que a equipe usará na triagem.',
+    ) +
+    `<form id="new-job" class="sheet">
+    ${input('Título da vaga', 'title')}${area('Descrição da função', 'description', '', 4000, true)}<div class="form-grid">
+    ${select('Jornada', 'schedule', shifts)}
+    ${select('Escolaridade mínima', 'school', schools)}${number('Anos de experiência desejáveis na função', 'desiredExperience')}</div>
+    ${locationFields(user.profile.address)}
+    <label class="check"><input type="checkbox" name="locationRequired">Exigir que o candidato resida na mesma cidade</label>
+    ${checklist('Competências obrigatórias', 'required', [...catalog.hard, ...catalog.soft])}${checklist('Competências técnicas desejáveis', 'hard', catalog.hard)}${checklist('Competências comportamentais desejáveis', 'soft', catalog.soft)}
+    ${submit('Abrir vaga para triagem')}</form>`
+  );
+}
+function jobList(jobs, blank = 'As vagas aparecerão aqui.') {
+  if (!jobs.length) return empty('Nenhuma vaga por aqui', blank);
+  return (
+    '<div class="list">' +
+    jobs
+      .map(
+        (
+          j,
+        ) => `<a class="job-row" href="#vaga/${j.id}"><span class="tile">${icon('briefcase')}</span>
+    <div class="row-main"><strong>${esc(j.title)}</strong><small>${esc(j.company)} · ${esc(j.details.city)}</small></div>
+    ${j.stage ? `<span class="stage">${esc(j.stage)}</span>` : ''}${badge(j.status)}${icon('chevron-right')}</a>`,
+      )
+      .join('') +
+    '</div>'
+  );
+}
+function overview(jobs) {
+  const candidate = user.role === 'candidate',
+    company = user.role === 'company';
+  const pending = jobs.filter((j) => j.status === 'triagem').length;
+  const active = jobs.filter((j) => j.status !== 'closed').length;
+  const processes = jobs.filter((j) => j.stage || j.interested);
+  const stats = candidate
+    ? [
+        ['Vagas abertas', active],
+        ['Meus processos', processes.length],
+        [
+          'Entrevistas',
+          processes.filter((j) => j.stage === 'Entrevista').length,
+        ],
+      ]
+    : [
+        ['Total de vagas', jobs.length],
+        ['Em triagem', pending],
+        ['Listas enviadas', jobs.filter((j) => j.status === 'sent').length],
+      ];
+  return (
+    heading(
+      candidate
+        ? 'Painel do candidato'
+        : company
+          ? 'Painel da empresa'
+          : 'Painel da equipe',
+      esc(user.name),
+      company ? link('nova', icon('plus') + ' Abrir vaga', 'primary') : '',
+    ) +
+    ((company && !user.profile.city) || (candidate && !user.consent_at)
+      ? `<div class="callout"><div><strong>${company ? 'Complete o cadastro da empresa' : 'Ative seu perfil para a triagem'}</strong><p>${company ? 'Informe os dados da empresa para abrir sua primeira vaga.' : 'Revise seus dados e autorize o envio do perfil às empresas.'}</p></div>${link('perfil', 'Revisar cadastro', 'inline')}</div>`
+      : '') +
+    `<div class="stats">${stats.map(([t, n]) => `<div><small>${t}</small><strong>${n}</strong></div>`).join('')}</div>
+    <div class="section-title"><h2>${candidate ? 'Meus processos' : company ? 'Minhas vagas' : 'Fila de triagem'}</h2>${link(candidate ? 'processos' : 'vagas', 'Ver todas', 'inline')}</div>` +
+    jobList(
+      (candidate
+        ? processes
+        : company
+          ? jobs
+          : jobs.filter((j) => j.status === 'triagem')
+      ).slice(0, 5),
+    )
+  );
+}
+function aiPanel(job) {
+  if (
+    !job.details.desiredExperience &&
+    !job.details.hard.length &&
+    !job.details.soft.length
+  )
+    return '';
+  const heading = '<h3>Equivalências com Gemini</h3>';
+  const state = job.ai_match;
+  if (!state)
+    return `<form class="sheet" id="ai-generate">${heading}<p>O Gemini consulta o vocabulário da vaga. Revise os sinônimos sugeridos antes de calcular as recomendações.</p>${submit('Consultar Gemini')}</form>`;
+  if (!state.suggestions.length)
+    return `<div class="sheet">${heading}<p>O Gemini não encontrou equivalências claras. Revise os perfis pela pontuação original.</p></div>`;
+  const choices = state.suggestions
+    .map(
+      (s, i) =>
+        `<label class="check"><input type="checkbox" name="selected" value="${i}" ${state.approved.includes(i) ? 'checked' : ''}><span>${esc(s.term)} ⇄ ${esc(s.alias)} <small>(${esc(s.type)})</small></span></label>`,
+    )
+    .join('');
+  return `<form class="sheet" id="ai-terms" data-version="${esc(state.version)}">${heading}<p>Marque os termos que têm o mesmo significado nesta vaga. Ao aplicar, os perfis serão reordenados e os cinco primeiros ficarão marcados para sua revisão.</p>${choices}${submit('Aplicar e recomendar perfis')}</form>`;
+}
+function matchEvidence(evidence) {
+  if (!evidence?.length) return '';
+  return `<div><strong>Equivalências que contribuíram para a nota</strong><ul>${evidence.map(({ term, alias }) => `<li>Vaga: ${esc(term)} · Perfil: ${esc(alias)}</li>`).join('')}</ul></div>`;
+}
+function cards(list, job, review) {
+  if (!list.length)
+    return empty(
+      review ? 'Nenhum perfil compatível' : 'A lista está vazia',
+      review
+        ? 'A triagem considera os perfis autorizados que atendem aos requisitos obrigatórios.'
+        : 'Os perfis disponíveis aparecerão após a revisão da equipe.',
+    );
+  return list
+    .map(
+      (
+        c,
+        index,
+      ) => `<article class="person"><div class="person-head"><div><h3>${esc(c.name)}</h3><small>${esc(c.profile.city)}</small></div><span class="score">${c.score}/100</span></div>
+    <p>${esc(c.profile.school)} · ${esc(c.profile.availability)}</p>
+    <div class="tags">${[...c.profile.hard, ...c.profile.soft].map((t) => `<span>${esc(t)}</span>`).join('')}</div>
+    ${matchEvidence(c.evidence)}
+    ${c.profile.roles.map((r) => `<div><strong>${esc(r.title)} · ${esc(r.years)} ano(s)</strong><p class="prose">${esc(r.summary)}</p></div>`).join('')}
+    ${
+      c.facts
+        ? `<p><strong>Distância até a vaga</strong> · ${c.facts.km == null ? 'Sem coordenadas suficientes' : Number(c.facts.km).toLocaleString('pt-BR') + ' km em linha reta (aprox. pelos CEPs)'}</p>
+      <div><button class="outline" type="button" data-analysis="${esc(c.id)}">Analisar habilidades e distância com IA</button><p class="analysis-result" role="status"></p></div>`
+        : ''
+    }
+    ${
+      review
+        ? `<small>Experiência ${c.parts.experience}/40 · Competências ${c.parts.skills}/25 · Região ${c.parts.region}/25 · Disponibilidade ${c.parts.availability}/10</small>
+      <label class="check"><input type="checkbox" name="candidates" value="${c.id}" ${index < 5 ? 'checked' : ''}>Incluir na lista</label>`
+        : `<p>${esc(c.email)} · ${esc(c.profile.phone)}</p>${job.status !== 'closed' && user.role === 'company' ? `<form class="stage-form" data-candidate="${c.id}">${select('Etapa', 'stage', stages, c.stage)}<button class="outline">Salvar etapa</button>${note}</form>` : `<strong>${esc(c.stage)}</strong>`}`
+    }
+    </article>`,
+    )
+    .join('');
+}
+async function jobPage(job) {
+  const d = job.details,
+    candidate = user.role === 'candidate',
+    admin = user.role === 'admin';
+  const info = [
+    [
+      'Local de trabalho',
+      d.address
+        ? [
+            d.address.street,
+            d.address.number,
+            d.address.complement,
+            d.address.district,
+            d.city,
+            d.address.state,
+          ]
+            .filter(Boolean)
+            .join(', ')
+        : d.city,
+    ],
+    ['Jornada', d.schedule],
+    ['Escolaridade mínima', d.school],
+    ['Experiência desejável', d.desiredExperience + ' ano(s)'],
+    ['Competências obrigatórias', d.required.join(', ') || 'Nenhuma'],
+    ['Competências desejáveis', [...d.hard, ...d.soft].join(', ') || 'Nenhuma'],
+  ];
+  let html =
+    link('vagas', icon('arrow-left') + ' Voltar às vagas', 'inline') +
+    heading(
+      esc(job.title),
+      esc(job.company) + ' · Aberta em ' + date(job.created_at),
+      badge(job.status),
+    ) +
+    `<div class="sheet"><p class="prose">${esc(d.description)}</p><dl>${info.map(([k, v]) => `<div><dt>${k}</dt><dd>${esc(v)}</dd></div>`).join('')}</dl>
+    ${d.locationRequired ? '<p>Residência na cidade da vaga obrigatória.</p>' : ''}</div>`;
+  if (candidate)
+    return (
+      html +
+      (job.stage
+        ? `<p class="callout">Sua etapa: ${esc(job.stage)}</p>`
+        : job.interested
+          ? '<p class="callout">Seu interesse foi registrado.</p>'
+          : job.status !== 'triagem'
+            ? '<p>A triagem desta vaga foi concluída.</p>'
+            : user.consent_at
+              ? '<button class="primary" data-action="interest">Registrar interesse</button>'
+              : link('perfil', 'Completar perfil para participar'))
+    );
+  const review = admin && job.status === 'triagem';
+  const list = await api(
+    '/jobs/' + job.id + (review ? '/review' : '/shortlist'),
+  );
+  html +=
+    '<h2>' +
+    (review ? 'Revisar perfis compatíveis' : 'Perfis enviados') +
+    '</h2>';
+  if (review) html += aiPanel(job);
+  html +=
+    review && list.length
+      ? `<form id="review" data-version="${esc(job.ai_match?.version)}"><p>Escolha até cinco perfis para enviar à empresa.</p>${cards(list, job, true)}${submit('Enviar lista à empresa')}</form>`
+      : cards(list, job, review);
+  if (!admin && job.status !== 'closed')
+    html +=
+      '<div class="end"><button class="outline" data-action="close">Encerrar vaga</button></div>';
+  return html;
+}
+async function content() {
+  if (user.role !== 'admin' && !user.profile.complete) return profilePage();
+  const path = route(),
+    candidate = user.role === 'candidate';
+  if (path === 'perfil' && user.role !== 'admin') return profilePage();
+  if (path === 'configuracoes' && user.role === 'company') return companySettings();
+  if (path === 'nova' && user.role === 'company') return newJob();
+  if (path === 'avisos' && candidate) {
+    const notices = await api('/notices');
+    return (
+      heading(
+        'Avisos',
+        'Atualizações dos seus processos seletivos.',
+        notices.some((n) => !n.read_at)
+          ? '<button class="outline" data-action="read">Marcar todos como lidos</button>'
+          : '',
+      ) +
+      (notices.length
+        ? notices
+            .map(
+              (n) =>
+                `<article class="person"><small>${date(n.created_at)} · ${n.read_at ? 'Lido' : 'Novo'}</small><p>${esc(n.message)}</p></article>`,
+            )
+            .join('')
+        : empty(
+            'Nenhum aviso',
+            'Você receberá um aviso quando seu perfil for enviado ou o processo mudar.',
+          ))
+    );
+  }
+  const jobs = await api('/jobs');
+  if (path.startsWith('vaga/')) {
+    const job = jobs.find((j) => j.id === path.split('/')[1]);
+    return job
+      ? jobPage(job)
+      : empty('Vaga indisponível', 'Consulte as vagas no menu.');
+  }
+  if (path === 'processos' && candidate)
+    return (
+      heading('Meus processos') +
+      jobList(
+        jobs.filter((j) => j.interested || j.stage),
+        'Os processos em que você manifestar interesse ou for pré-selecionado aparecerão aqui.',
+      )
+    );
+  if (path === 'vagas')
+    return (
+      heading(
+        candidate
+          ? 'Vagas abertas'
+          : user.role === 'admin'
+            ? 'Triagem de vagas'
+            : 'Minhas vagas',
+        '',
+        user.role === 'company' ? link('nova', 'Abrir vaga', 'primary') : '',
+      ) + jobList(candidate ? jobs.filter((j) => j.status !== 'closed') : jobs)
+    );
+  return overview(jobs);
+}
+async function render() {
+  const current = ++revision;
+  root.setAttribute('aria-busy', 'true');
+  try {
+    if (!user) {
+      root.innerHTML = authPage();
+      return;
+    }
+    const html = await content();
+    if (current === revision) {
+      root.innerHTML = shell(html);
+      document.title =
+        (root.querySelector('h1')?.textContent || 'Painel') + ' · JJ Serviços';
+    }
+  } catch (err) {
+    if (current === revision)
+      root.innerHTML = (user ? shell : (s) => s)(
+        empty('Falha ao carregar', err.message) +
+          '<button class="outline" data-action="retry">Tentar novamente</button>',
+      );
+  } finally {
+    if (current === revision) root.setAttribute('aria-busy', 'false');
+  }
+}
+async function boot() {
+  try {
+    user = await api('/me');
+  } catch (err) {
+    if (err.status !== 401) {
+      root.innerHTML =
+        empty('Servidor indisponível', err.message) +
+        '<button class="outline" data-action="boot">Tentar novamente</button>';
+      root.setAttribute('aria-busy', 'false');
+      return;
+    }
+  }
+  render();
+}
+root.addEventListener('submit', async (event) => {
+  event.preventDefault();
+  const form = event.target,
+    data = Object.fromEntries(new FormData(form)),
+    button =
+      event.submitter ||
+      form.querySelector('button[type="submit"]') ||
+      form.querySelector('button');
+  const error = form.querySelector('.error'),
+    id = route().split('/')[1];
+  button.disabled = true;
+  error.textContent = '';
+  try {
+    if (form.id === 'auth') {
+      const register = route() === 'cadastro';
+      await api(register ? '/register' : '/login', 'POST', {
+        ...data,
+        role: access,
+      });
+      user = await api('/me');
+      go(user.role !== 'admin' && !user.profile.complete ? 'perfil' : 'inicio');
+    } else if (form.id === 'profile') {
+      await api('/me', 'PUT', {
+        ...data,
+        ...collectedSkills(form),
+        roles: collectRoles(form),
+        address: readAddress(form),
+        consent: !!data.consent,
+      });
+      user = await api('/me');
+      toast('Cadastro salvo.');
+      go('inicio');
+    } else if (form.id === 'company-settings') {
+      const settings = await api('/me/settings', 'PUT', data);
+      user.profile.settings = settings;
+      toast('Configurações salvas.');
+    } else if (form.id === 'new-job') {
+      const job = await api('/jobs', 'POST', {
+        ...data,
+        ...collectedSkills(form),
+        required: values(form, 'required'),
+        address: readAddress(form),
+        locationRequired: !!data.locationRequired,
+      });
+      toast('Vaga aberta para triagem.');
+      go('vaga/' + job.id);
+    } else if (form.id === 'ai-generate') {
+      await api('/jobs/' + id + '/ai/suggest', 'POST');
+      await render();
+    } else if (form.id === 'ai-terms') {
+      await api('/jobs/' + id + '/ai/terms', 'PUT', {
+        version: form.dataset.version,
+        selected: new FormData(form).getAll('selected').map(Number),
+      });
+      toast('Recomendações atualizadas.');
+      await render();
+    } else if (form.id === 'review') {
+      await api('/jobs/' + id + '/publish', 'POST', {
+        candidates: new FormData(form).getAll('candidates'),
+        version: form.dataset.version || null,
+      });
+      toast('Lista enviada à empresa.');
+      render();
+    } else if (form.classList.contains('stage-form')) {
+      await api('/jobs/' + id + '/stage', 'PUT', {
+        stage: data.stage,
+        candidate: form.dataset.candidate,
+      });
+      toast('Etapa salva.');
+      render();
+    } else if (
+      form.id === 'delete' &&
+      confirm('Excluir definitivamente sua conta e seus dados?')
+    ) {
+      await api('/me', 'DELETE', data);
+      user = null;
+      toast('Conta excluída.');
+      go('entrar');
+    }
+  } catch (err) {
+    error.textContent = err.message;
+  } finally {
+    button.disabled = false;
+  }
+});
+root.addEventListener('click', async (event) => {
+  const role = event.target.closest('[data-role]')?.dataset.role;
+  if (role) {
+    access = role;
+    if (role === 'admin') go('entrar');
+    else render();
+    return;
+  }
+  const button = event.target.closest('[data-action]');
+  if (!button) return;
+  const id = route().split('/')[1];
+  button.disabled = true;
+  try {
+    switch (button.dataset.action) {
+      case 'boot':
+        await boot();
+        return;
+      case 'logout':
+        await api('/logout', 'POST');
+        access = user.role;
+        user = null;
+        go('entrar');
+        return;
+      case 'interest':
+        await api('/jobs/' + id + '/interest', 'POST');
+        toast('Interesse registrado.');
+        break;
+      case 'close':
+        if (!confirm('Encerrar a vaga e avisar os participantes?')) return;
+        await api('/jobs/' + id + '/close', 'POST');
+        toast('Vaga encerrada.');
+        break;
+      case 'read':
+        await api('/notices/read', 'POST');
+        break;
+    }
+    render();
+  } catch (err) {
+    toast(err.message);
+  } finally {
+    button.disabled = false;
+  }
+});
+window.addEventListener('hashchange', () => {
+  render();
+  window.scrollTo(0, 0);
+});
+bindFormControls(root);
+boot();
 
-function seed() {
- const d=(day)=>new Date(Date.now()-day*86400000).toISOString();
- return {
-  version:1,
-  session:null,
-  companies:[
-   {id:'co1',name:'Mercado Aurora',contact:'Fernanda Almeida',email:'empresa@demo.jj',phone:'(81) 90000-0001',city:'Recife',sector:'Varejo',plan:'Básico',bio:'Mercado de bairro com atendimento acolhedor e equipe próxima.'},
-   {id:'co2',name:'Café do Pátio',contact:'Ricardo Bezerra',email:'cafe@demo.jj',phone:'(81) 90000-0002',city:'Olinda',sector:'Alimentação',plan:'Por vaga',bio:'Cafeteria local com foco em atendimento e qualidade.'},
-   {id:'co3',name:'Ativa Serviços',contact:'Lívia Costa',email:'ativa@demo.jj',phone:'(81) 90000-0003',city:'Recife',sector:'Serviços',plan:'Profissional',bio:'Equipe de apoio operacional e administrativo.'}
-  ],
-  candidates:[
-   {id:'ca1',name:'Marina Santos',email:'candidato@demo.jj',phone:'(81) 98888-1001',city:'Recife',school:'tecnico',experience:3,skills:['Excel','Atendimento','Organização','Pacote Office'],availability:'Integral',bio:'Experiência em rotinas administrativas, atendimento e organização de documentos.',roleInterest:'Auxiliar administrativo',consent:true,updated:d(2)},
-   {id:'ca2',name:'Carlos Oliveira',email:'carlos@demo.jj',phone:'(81) 98888-1002',city:'Recife',school:'medio',experience:2,skills:['Atendimento','Vendas','Caixa','Comunicação'],availability:'Integral',bio:'Atendimento em lojas de varejo e operação de caixa.',roleInterest:'Atendente de loja',consent:true,updated:d(4)},
-   {id:'ca3',name:'Luana Ferreira',email:'luana@demo.jj',phone:'(81) 98888-1003',city:'Olinda',school:'superior',experience:2,skills:['Excel','Pacote Office','Atendimento','Organização'],availability:'Integral',bio:'Formada em administração, com atuação em recepção e atendimento.',roleInterest:'Assistente administrativo',consent:true,updated:d(7)},
-   {id:'ca4',name:'Gabriel Costa',email:'gabriel@demo.jj',phone:'(81) 98888-1004',city:'Recife',school:'medio',experience:1,skills:['Estoque','Organização','Inventário'],availability:'Manhã',bio:'Experiência com organização de materiais e estoque.',roleInterest:'Auxiliar de estoque',consent:true,updated:d(3)},
-   {id:'ca5',name:'Ana Paula Souza',email:'ana@demo.jj',phone:'(81) 98888-1005',city:'Jaboatão dos Guararapes',school:'tecnico',experience:5,skills:['Excel','Atendimento','Organização','Pacote Office','Comunicação'],availability:'Integral',bio:'Atuação em escritório, controle de planilhas e atendimento ao público.',roleInterest:'Auxiliar administrativo',consent:true,updated:d(1)},
-   {id:'ca6',name:'Rafael Lima',email:'rafael@demo.jj',phone:'(81) 98888-1006',city:'Olinda',school:'medio',experience:1,skills:['Atendimento','Comunicação','Vendas'],availability:'Tarde',bio:'Buscando recolocação em comércio e serviços.',roleInterest:'Vendedor',consent:true,updated:d(5)},
-   {id:'ca7',name:'Beatriz Nunes',email:'beatriz@demo.jj',phone:'(81) 98888-1007',city:'Recife',school:'superior',experience:4,skills:['Excel','Atendimento','Pacote Office','Organização','Comunicação'],availability:'Integral',bio:'Experiência em suporte comercial e processos administrativos.',roleInterest:'Assistente administrativo',consent:true,updated:d(6)},
-   {id:'ca8',name:'Pedro Rocha',email:'pedro@demo.jj',phone:'(81) 98888-1008',city:'Recife',school:'medio',experience:3,skills:['Estoque','Inventário','Logística','Organização'],availability:'Integral',bio:'Vivência com recebimento, armazenagem e separação.',roleInterest:'Auxiliar de estoque',consent:true,updated:d(12)},
-   {id:'ca9',name:'Camila Ribeiro',email:'camila@demo.jj',phone:'(81) 98888-1009',city:'Olinda',school:'medio',experience:2,skills:['Atendimento','Caixa','Comunicação','Organização'],availability:'Integral',bio:'Trabalho com atendimento presencial em comércio.',roleInterest:'Atendente',consent:true,updated:d(9)},
-   {id:'ca10',name:'Bruno Almeida',email:'bruno@demo.jj',phone:'(81) 98888-1010',city:'Recife',school:'fundamental',experience:2,skills:['Cozinha','Higiene','Organização'],availability:'Noite',bio:'Experiência em pré-preparo e organização de cozinha.',roleInterest:'Auxiliar de cozinha',consent:true,updated:d(3)},
-   {id:'ca11',name:'Larissa Melo',email:'larissa@demo.jj',phone:'(81) 98888-1011',city:'Paulista',school:'medio',experience:0,skills:['Atendimento','Comunicação','Pacote Office'],availability:'Integral',bio:'Busco meu primeiro emprego e tenho disponibilidade para aprender.',roleInterest:'Recepcionista',consent:true,updated:d(2)},
-   {id:'ca12',name:'João Victor Silva',email:'joaov@demo.jj',phone:'(81) 98888-1012',city:'Recife',school:'tecnico',experience:3,skills:['Excel','Atendimento','Organização','Pacote Office'],availability:'Integral',bio:'Técnico em administração, organizado e comunicativo.',roleInterest:'Auxiliar administrativo',consent:true,updated:d(4)}
-  ],
-  jobs:[
-   {id:'v1',companyId:'co1',title:'Auxiliar administrativo',sector:'Administrativo',city:'Recife',workMode:'Presencial',contract:'CLT',schedule:'Integral',salary:2100,school:'medio',requiredSkills:['Pacote Office'],desiredSkills:['Excel','Atendimento','Organização'],desiredExperience:2,locationRequired:false,description:'Apoiar rotinas administrativas, organização de documentos, planilhas e atendimento interno. Buscamos alguém proativo e atento aos detalhes.',benefits:'Vale-transporte, vale-alimentação e treinamento.',status:'triagem',reviewed:[],shortlist:[],created:d(1)},
-   {id:'v2',companyId:'co1',title:'Atendente de loja',sector:'Varejo',city:'Recife',workMode:'Presencial',contract:'CLT',schedule:'Integral',salary:1650,school:'medio',requiredSkills:['Atendimento'],desiredSkills:['Caixa','Vendas','Comunicação'],desiredExperience:1,locationRequired:false,description:'Recepcionar clientes, apoiar vendas, organizar a loja e auxiliar no caixa.',benefits:'Vale-transporte e desconto em compras.',status:'sent',reviewed:['ca2','ca9','ca6'],shortlist:['ca2','ca9','ca6'],created:d(6)},
-   {id:'v3',companyId:'co2',title:'Auxiliar de cozinha',sector:'Alimentação',city:'Olinda',workMode:'Presencial',contract:'CLT',schedule:'Noite',salary:1750,school:'fundamental',requiredSkills:['Cozinha'],desiredSkills:['Higiene','Organização'],desiredExperience:1,locationRequired:false,description:'Apoio no preparo dos alimentos, organização e higienização dos utensílios e da cozinha.',benefits:'Alimentação no local.',status:'triagem',reviewed:[],shortlist:[],created:d(2)},
-   {id:'v4',companyId:'co3',title:'Recepcionista',sector:'Serviços',city:'Recife',workMode:'Presencial',contract:'CLT',schedule:'Integral',salary:1800,school:'medio',requiredSkills:['Atendimento'],desiredSkills:['Comunicação','Pacote Office','Organização'],desiredExperience:0,locationRequired:false,description:'Atender visitantes, prestar informações, orientar clientes e apoiar a agenda da unidade.',benefits:'Vale-transporte e assistência odontológica.',status:'open',reviewed:[],shortlist:[],created:d(0)},
-   {id:'v5',companyId:'co1',title:'Auxiliar de estoque',sector:'Logística',city:'Recife',workMode:'Presencial',contract:'CLT',schedule:'Integral',salary:1850,school:'medio',requiredSkills:['Estoque'],desiredSkills:['Inventário','Organização','Logística'],desiredExperience:1,locationRequired:false,description:'Recebimento e conferência de produtos, inventário e organização do depósito.',benefits:'Vale-transporte e assistência médica.',status:'triagem',reviewed:[],shortlist:[],created:d(3)},
-   {id:'v6',companyId:'co2',title:'Atendente de cafeteria',sector:'Alimentação',city:'Olinda',workMode:'Presencial',contract:'CLT',schedule:'Tarde',salary:1700,school:'medio',requiredSkills:['Atendimento'],desiredSkills:['Caixa','Comunicação','Organização'],desiredExperience:0,locationRequired:false,description:'Atendimento de pedidos, organização do balcão e apoio no fechamento de caixa.',benefits:'Lanche no local e vale-transporte.',status:'open',reviewed:[],shortlist:[],created:d(1)},
-   {id:'v7',companyId:'co3',title:'Assistente de vendas',sector:'Varejo',city:'Recife',workMode:'Presencial',contract:'CLT',schedule:'Integral',salary:1950,school:'medio',requiredSkills:['Vendas'],desiredSkills:['Atendimento','Comunicação','Excel'],desiredExperience:1,locationRequired:false,description:'Acompanhar pedidos, responder a clientes e auxiliar a equipe comercial.',benefits:'Vale-alimentação e bonificação.',status:'open',reviewed:[],shortlist:[],created:d(4)},
-   {id:'v8',companyId:'co1',title:'Operador de caixa',sector:'Varejo',city:'Recife',workMode:'Presencial',contract:'CLT',schedule:'Integral',salary:1620,school:'medio',requiredSkills:['Caixa'],desiredSkills:['Atendimento','Organização'],desiredExperience:1,locationRequired:false,description:'Operar caixa e apoiar atendimento e organização no ponto de venda.',benefits:'Vale-transporte.',status:'closed',reviewed:['ca2','ca9'],shortlist:['ca2','ca9'],created:d(20)}
-  ],
-  applications:[
-   {id:'ap1',candidateId:'ca1',jobId:'v1',status:'Inscrito',date:d(0)},
-   {id:'ap2',candidateId:'ca2',jobId:'v2',status:'Entrevista',date:d(5)},
-   {id:'ap3',candidateId:'ca9',jobId:'v2',status:'Pré-selecionado',date:d(5)},
-   {id:'ap4',candidateId:'ca2',jobId:'v8',status:'Contratado',date:d(18)}
-  ],
-  notifications:[
-   {id:'n1',candidateId:'ca1',title:'Perfil cadastrado com sucesso',message:'Seu perfil está na base. Quando surgir uma oportunidade compatível, você poderá ser encontrado.',date:d(2),read:false},
-   {id:'n2',candidateId:'ca2',title:'Você foi pré-selecionado!',message:'Seu perfil entrou na lista de Atendente de loja do Mercado Aurora. Pré-seleção não é contratação.',date:d(4),read:false},
-   {id:'n3',candidateId:'ca2',title:'Entrevista em andamento',message:'Seu status foi atualizado para entrevista na vaga de Atendente de loja.',date:d(1),read:false}
-  ],
-  settings:{minScore:0,manualReview:true,showDemoTag:true}
- };
-}
-function load(){try{const raw=localStorage.getItem(KEY);if(raw){const saved=JSON.parse(raw);if(saved&&saved.version===1&&Array.isArray(saved.jobs))return saved}}catch(e){console.warn('Armazenamento indisponível',e)}return seed()}
-let db=load();
-function save(){try{localStorage.setItem(KEY,JSON.stringify(db))}catch(e){console.warn('Não foi possível salvar',e)}}
-const getJob=id=>db.jobs.find(x=>x.id===id);
-const getCo=id=>db.companies.find(x=>x.id===id);
-const getCa=id=>db.candidates.find(x=>x.id===id);
-const session=()=>db.session;
-const me=()=>db.session?.role==='candidate'?getCa(db.session.id):db.session?.role==='company'?getCo(db.session.id):db.session?.role==='admin'?{name:'Equipe JJ Serviços',email:'admin@demo.jj'}:null;
-const ownJobs=()=>db.jobs.filter(j=>j.companyId===db.session?.id);
-const getAppsByJob=id=>db.applications.filter(a=>a.jobId===id);
-const getAppsByCand=id=>db.applications.filter(a=>a.candidateId===id);
-const published=(job,cand)=>job.shortlist?.includes(cand.id);
-const isOpen=j=>j.status!=='closed';
-const norm=v=>String(v||'').normalize('NFD').replace(/[\u0300-\u036f]/g,'').toLowerCase().trim();
-function match(c,j){
- if(!c||!j)return {eligible:false,score:0,parts:{experience:0,skills:0,region:0,availability:0},missing:['Dados insuficientes']};
- const missing=[];
- if(SCHOOL_ORDER.indexOf(c.school)<SCHOOL_ORDER.indexOf(j.school))missing.push('Escolaridade mínima');
- const skills=(c.skills||[]).map(norm);
- for(const skill of j.requiredSkills||[])if(!skills.includes(norm(skill)))missing.push('Competência obrigatória: '+skill);
- if(j.locationRequired&&norm(c.city)!==norm(j.city))missing.push('Localidade obrigatória');
- const desired=j.desiredSkills||[];
- const skillScore=desired.length?Math.round(25*desired.filter(s=>skills.includes(norm(s))).length/desired.length):25;
- const expScore=j.desiredExperience>0?Math.min(40,Math.round(40*(Number(c.experience)||0)/j.desiredExperience)):40;
- const regionScore=norm(c.city)===norm(j.city)?25:CITIES.includes(c.city)&&CITIES.includes(j.city)?17:5;
- const availScore=c.availability==='Flexível'||c.availability==='Integral'||c.availability===j.schedule?10:4;
- const parts={experience:expScore,skills:skillScore,region:regionScore,availability:availScore};
- return {eligible:missing.length===0,score:missing.length?0:expScore+skillScore+regionScore+availScore,parts,missing};
-}
-const candidatesFor = job => db.candidates.filter(c=>c.consent).map(c=>({candidate:c,...match(c,job)})).filter(x=>x.eligible).sort((a,b)=>b.score-a.score).slice(0,50);
-const topFive = job => candidatesFor(job).slice(0,5);
-function countCandidatesForJob(j){return candidatesFor(j).length}
-const statusInfo = s => ({open:['Aberta','blue'],triagem:['Em triagem','yellow'],sent:['Lista enviada','green'],closed:['Encerrada','red']}[s]||[s,'blue']);
-const applicationTag = s => ({'Inscrito':'blue','Pré-selecionado':'yellow','Entrevista':'green','Contratado':'green','Não selecionado':'red'}[s]||'blue');
-function tag(t,c=''){return `<span class="tag ${c}">${esc(t)}</span>`}
-function statusTag(s){const [a,b]=statusInfo(s);return tag(a,b)}
-function iconPath(n){return ({
- 'arrow-right':'<path d="M5 12h14m-6-6 6 6-6 6"/>','arrow-left':'<path d="M19 12H5m6 6-6-6 6-6"/>','chevron-right':'<path d="m9 18 6-6-6-6"/>','chevron-down':'<path d="m6 9 6 6 6-6"/>','check':'<path d="m20 6-11 11-5-5"/>','check-circle':'<circle cx="12" cy="12" r="10"/><path d="m8 12 3 3 5-6"/>','briefcase':'<rect x="3" y="7" width="18" height="14" rx="2"/><path d="M8 7V5a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2m-13 7h18"/>','users':'<path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2m14-16a4 4 0 0 1 0 8m6 8v-2a4 4 0 0 0-3-3.87"/><circle cx="9" cy="7" r="4"/>','user':'<path d="M20 21a8 8 0 0 0-16 0"/><circle cx="12" cy="8" r="4"/>','building':'<rect x="3" y="4" width="18" height="17" rx="2"/><path d="M8 21v-5h8v5M8 8h.01M16 8h.01M8 12h.01M16 12h.01"/>','shield':'<path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/><path d="m9 12 2 2 4-4"/>','target':'<circle cx="12" cy="12" r="9"/><circle cx="12" cy="12" r="5"/><circle cx="12" cy="12" r="1"/>','zap':'<path d="m13 2-3 8H5l7 12 3-8h5L13 2z"/>','clock':'<circle cx="12" cy="12" r="9"/><path d="M12 7v5l3 2"/>','map-pin':'<path d="M20 10c0 5-8 12-8 12S4 15 4 10a8 8 0 1 1 16 0Z"/><circle cx="12" cy="10" r="2.5"/>','search':'<circle cx="11" cy="11" r="7"/><path d="m20 20-4-4"/>','filter':'<path d="M4 6h16M7 12h10m-7 6h4"/>','calendar':'<rect x="3" y="5" width="18" height="16" rx="2"/><path d="M7 3v4m10-4v4M3 10h18"/>','bell':'<path d="M18 8a6 6 0 0 0-12 0c0 7-3 7-3 9h18c0-2-3-2-3-9M10 21h4"/>','layout':'<rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/>','file':'<path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6M8 13h8M8 17h8"/>','plus':'<path d="M12 5v14M5 12h14"/>','edit':'<path d="m15 5 4 4M4 20l4-.8L20 7a2.8 2.8 0 0 0-4-4L4.8 15 4 20Z"/>','settings':'<circle cx="12" cy="12" r="3"/><path d="M19 13.5a7 7 0 0 0 0-3l2-1.5-2-3.5-2.3.9a7 7 0 0 0-2.6-1.5L13.7 2h-3.4l-.4 2.9a7 7 0 0 0-2.6 1.5L5 5.5 3 9l2 1.5a7 7 0 0 0 0 3L3 15l2 3.5 2.3-.9a7 7 0 0 0 2.6 1.5l.4 2.9h3.4l.4-2.9a7 7 0 0 0 2.6-1.5l2.3.9L21 15z"/>','logout':'<path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4m7 14 5-5-5-5m5 5H9"/>','menu':'<path d="M4 6h16M4 12h16M4 18h16"/>','x':'<path d="M18 6 6 18M6 6l12 12"/>','inbox':'<rect x="3" y="4" width="18" height="16" rx="2"/><path d="M3 13h5l2 3h4l2-3h5"/>','mail':'<rect x="3" y="5" width="18" height="14" rx="2"/><path d="m3 7 9 6 9-6"/>','phone':'<path d="M6 3h4l1 5-2.5 1.5a15 15 0 0 0 6 6L16 13l5 1v4a3 3 0 0 1-3 3A15 15 0 0 1 3 6a3 3 0 0 1 3-3Z"/>','star':'<path d="m12 2 3 6.3 7 .9-5 5 .9 7L12 18l-5.9 3.2.9-7-5-5 7-.9Z"/>','heart':'<path d="M20.8 4.6a5.5 5.5 0 0 0-7.8 0L12 5.7l-1.1-1.1a5.5 5.5 0 0 0-7.8 7.8 7.8 0 0 0 0 11L12 22l8.8-6.4a7.8 7.8 0 0 0 0-11Z"/>','clipboard':'<rect x="5" y="4" width="14" height="18" rx="2"/><rect x="9" y="2" width="6" height="4" rx="1"/><path d="M9 12h6m-6 4h6"/>','trending':'<path d="m3 17 6-6 4 4 8-9m-7 0h7v7"/>','eye':'<path d="M2 12s4-7 10-7 10 7 10 7-4 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/>','send':'<path d="m22 2-7 20-4-9-9-4 20-7ZM22 2 11 13"/>','refresh':'<path d="M20 11A8 8 0 0 0 6 6L3 9m0-6v6h6M4 13a8 8 0 0 0 14 5l3-3m0 6v-6h-6"/>','trash':'<path d="M3 6h18m-2 0-1 15H6L5 6m4 0V3h6v3M10 10v7m4-7v7"/>','info':'<circle cx="12" cy="12" r="10"/><path d="M12 11v5m0-9h.01"/>','lock':'<rect x="4" y="10" width="16" height="12" rx="2"/><path d="M8 10V6a4 4 0 0 1 8 0v4"/>','globe':'<circle cx="12" cy="12" r="10"/><path d="M2 12h20M12 2a15 15 0 0 0 0 20M12 2a15 15 0 0 1 0 20"/>','sparkles':'<path d="m12 3 1.8 5.2L19 10l-5.2 1.8L12 17l-1.8-5.2L5 10l5.2-1.8L12 3ZM19 16l.7 1.3L21 18l-1.3.7L19 20l-.7-1.3L17 18l1.3-.7L19 16Z"/>','download':'<path d="M12 3v12m-4-4 4 4 4-4M4 17v4h16v-4"/>','home':'<path d="m3 10 9-7 9 7v11h-7v-7h-4v7H3Z"/>','award':'<circle cx="12" cy="8" r="5"/><path d="m8 13-2 9 6-3 6 3-2-9"/>','message':'<path d="M21 12a9 9 0 0 1-9 9 9 9 0 0 1-4.6-1.3L3 21l1.3-4.4A9 9 0 1 1 21 12Z"/>','list-check':'<path d="m3 6 2 2 3-4m3 3h10m-18 6 2 2 3-4m3 3h10m-18 6 2 2 3-4m3 3h10"/>','bar-chart':'<path d="M4 20h16M7 17v-7m5 7V4m5 13v-5"/>','help':'<circle cx="12" cy="12" r="10"/><path d="M9.5 9a2.5 2.5 0 0 1 5 1c0 2-2.5 2-2.5 4m0 3h.01"/>'
- })[n]||'<circle cx="12" cy="12" r="9"/>'}
-function ic(name,size=18){return `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${iconPath(name)}</svg>`}
-function brand(){return `<a class="brand" href="#/"><span class="brand-mark"><span>JJ</span></span><span>JJ Serviços</span></a>`}
-function header(){const user=me();const role=db.session?.role;const publicLinks=[['/vagas','Encontrar vagas'],['/empresas','Para empresas'],['/como-funciona','Como funciona'],['/planos','Planos']];return `<header class="nav"><div class="container nav-inner">${brand()}<nav class="nav-links" aria-label="Navegação principal">${publicLinks.map(([p,t])=>`<a href="${link(p)}" class="${route().startsWith(p)?'active':''}">${t}</a>`).join('')}</nav><div class="nav-actions">${user?`<a class="nav-user" href="${link(role==='candidate'?'/candidato':role==='company'?'/empresa':'/admin')}"><span class="avatar small ${role==='company'?'orange':''}">${esc(initials(user.name))}</span><span style="font-size:12px;font-weight:800;max-width:135px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${esc(user.name.split(' ')[0])} ${ic('chevron-down',13)}</span></a><button class="btn btn-ghost btn-sm" data-action="logout" title="Sair">${ic('logout')}</button>`:`<a class="btn btn-ghost btn-sm" href="#/entrar">Entrar</a><a class="btn btn-primary btn-sm" href="#/cadastro/candidato">Criar conta ${ic('arrow-right')}</a>`}<button class="mobile-menu-button" aria-label="Abrir menu" aria-expanded="false" data-action="menu">${ic('menu',24)}</button></div></div><div class="mobile-menu" id="mobile-menu">${publicLinks.map(([p,t])=>`<a href="${link(p)}">${t}</a>`).join('')}${user?`<a href="${link(role==='candidate'?'/candidato':role==='company'?'/empresa':'/admin')}">Meu painel</a><a href="#/" data-action="logout">Sair</a>`:`<a href="#/entrar">Entrar</a><a href="#/cadastro/candidato">Cadastrar candidato</a><a href="#/cadastro/empresa">Cadastrar empresa</a>`}</div></header>`}
-function footer(){return `<footer class="footer"><div class="container"><div class="footer-grid"><div>${brand()}<p style="margin-top:19px;max-width:315px;line-height:1.85">Conectamos pequenos negócios a pessoas com potencial. Menos currículos, mais encontros que fazem sentido.</p><span class="tag" style="background:#203956;color:#b8cbdf">Protótipo acadêmico • 2026</span></div><div><h4>Plataforma</h4><ul><li><a href="#/vagas">Ver vagas</a></li><li><a href="#/como-funciona">Como funciona</a></li><li><a href="#/cadastro/candidato">Para candidatos</a></li></ul></div><div><h4>Empresas</h4><ul><li><a href="#/empresas">Nossas soluções</a></li><li><a href="#/planos">Planos e preços</a></li><li><a href="#/cadastro/empresa">Criar conta</a></li></ul></div><div><h4>Institucional</h4><ul><li><a href="#/sobre">Sobre nós</a></li><li><a href="#/privacidade">Privacidade</a></li><li><a href="#/contato">Contato</a></li></ul></div></div><div class="footer-bottom"><span>© 2026 JJ Serviços · Projeto demonstrativo</span><span>Conceito idealizado por Tiago Pereira da Silva</span></div></div></footer>`}
-function toast(message,type='success'){const el=document.createElement('div');el.className='toast '+type;el.innerHTML=ic(type==='success'?'check-circle':'info')+' '+esc(message);const root=document.getElementById('toast-root');root.appendChild(el);setTimeout(()=>el.remove(),3800)}
-function notice(candidateId,title,message){db.notifications.unshift({id:id('n'),candidateId,title,message,date:todayISO(),read:false})}
-function route(){let x=decodeURI(location.hash.slice(1)||'/');if(!x.startsWith('/'))x='/'+x;return x.replace(/\/$/,'')||'/'}
-function navigate(r){location.hash=link(r);window.scrollTo({top:0,behavior:'instant'})}
-function pageHero(title,sub,eyebrow='JJ SERVIÇOS'){return `<section class="page-hero"><div class="container"><span class="label-kicker">${esc(eyebrow)}</span><h1>${title}</h1><p>${sub}</p></div></section>`}
-function crumbs(entries){return `<div class="breadcrumbs"><a href="#/">Início</a>${entries.map(([p,t])=>`${ic('chevron-right')}<a href="${link(p)}">${esc(t)}</a>`).join('')}</div>`}
-function sectionHead(k,t,p,center=false){return `<div class="section-head ${center?'center':''}"><span class="label-kicker">${k}</span><h2>${t}</h2><p>${p}</p></div>`}
-function feature(icon,title,p,color=''){return `<div class="feature-card"><div class="feature-icon ${color}">${ic(icon)}</div><h3>${title}</h3><p>${p}</p></div>`}
-function stat(icon,label,value,note,color=''){return `<div class="stat-card"><div class="stat-card-head"><span>${label}</span><span class="feature-icon ${color}">${ic(icon)}</span></div><strong>${value}</strong><span class="subtle">${note}</span></div>`}
-function dashCard(title,body,extra='',subtitle=''){return `<div class="dash-card"><div class="dash-card-head"><div><h3>${title}</h3>${subtitle?`<p>${subtitle}</p>`:''}</div>${extra}</div>${body}</div>`}
-function avatar(name,color='',size=''){return `<span class="avatar ${color} ${size}">${esc(initials(name))}</span>`}
-function jobTags(j){return `${tag(j.contract)} ${tag(j.workMode)} ${tag(j.city,'blue')}`}
-function jobCard(j,compact=false,candidate=null){const co=getCo(j.companyId)||{name:'Empresa'};const score=candidate?match(candidate,j):null;return `<article class="job-card"><div class="job-card-head"><div class="company-symbol">${esc(initials(co.name))}</div><div style="flex:1;min-width:0"><h3><a href="#/vaga/${esc(j.id)}">${esc(j.title)}</a></h3><div class="info">${esc(co.name)} · ${ic('map-pin',13)} ${esc(j.city)} · ${ageText(j.created)}</div></div>${score&&score.eligible?`<div class="text-right">${tag(score.score+'% de afinidade','green')}</div>`:''}</div>${!compact?`<p style="margin:13px 0">${esc(short(j.description,155))}</p>`:''}<div class="tags" style="margin-top:12px">${jobTags(j)} ${j.status==='closed'?statusTag(j.status):''}</div><div class="job-card-foot"><span class="strong" style="font-size:14px">${money(j.salary)} <span class="subtle">/mês</span></span><a class="btn btn-outline btn-sm" href="#/vaga/${esc(j.id)}">Ver detalhes ${ic('arrow-right')}</a></div></article>`}
-function gated(role){return db.session?.role===role}
-function redirectRequired(role){const t=role==='candidate'?'candidato':role==='company'?'empresa':'administrador';return `<div class="container" style="padding:85px 0">${empty('Acesso do '+t,'Entre com uma conta de demonstração ou cadastre-se para acessar esta área.',`<a href="#/entrar" class="btn btn-primary">Acessar demonstração ${ic('arrow-right')}</a>`)}</div>`}
-function dashboard(role,active,body){const nav={candidate:[['/candidato','Visão geral','layout'],['/candidato/perfil','Meu perfil','user'],['/candidato/candidaturas','Minhas candidaturas','briefcase'],['/candidato/notificacoes','Notificações','bell'],['/vagas','Explorar vagas','search']],company:[['/empresa','Visão geral','layout'],['/empresa/vagas','Minhas vagas','briefcase'],['/empresa/nova-vaga','Publicar vaga','plus'],['/empresa/candidatos','Candidatos','users'],['/empresa/configuracoes','Minha empresa','settings']],admin:[['/admin','Visão geral','layout'],['/admin/vagas','Gerenciar vagas','briefcase'],['/admin/candidatos','Base de talentos','users'],['/admin/empresas','Empresas','building'],['/admin/configuracoes','Configurações','settings']]};const n=nav[role];const sidebar=`<aside class="sidebar"><div class="sidebar-caption">${role==='admin'?'Administração':'Meu espaço'}</div>${n.map(([p,t,i])=>`<a class="side-link ${p===active?'active':''}" href="${link(p)}">${ic(i)} ${t}</a>`).join('')}<div class="sidebar-tip"><div class="feature-icon orange" style="width:36px;height:36px;margin-bottom:12px">${ic('sparkles',18)}</div><h4>${role==='candidate'?'Seu próximo passo':role==='company'?'Contrate com agilidade':'Seleção responsável'}</h4><p>${role==='candidate'?'Mantenha seu perfil atualizado para encontrar oportunidades.':role==='company'?'A JJ seleciona até cinco perfis para cada vaga.':'Revisão humana antes de liberar qualquer lista.'}</p><a href="${link(role==='candidate'?'/candidato/perfil':role==='company'?'/empresa/nova-vaga':'/admin/vagas')}" class="btn btn-outline btn-sm">${role==='candidate'?'Atualizar perfil':role==='company'?'Abrir vaga':'Ver triagens'} ${ic('arrow-right')}</a></div></aside>`;return `<div class="dashboard-shell">${sidebar}<main class="dashboard-main">${body}<div class="dev-note">Ambiente de demonstração: dados ilustrativos salvos neste navegador. Não use dados pessoais reais.</div></main></div>`}
-function dashHead(k,h,p='',extra=''){return `<div class="dashboard-head"><div><span class="dash-kicker">${k}</span><h1>${h}</h1><p>${p}</p></div>${extra}</div>`}
-function formatCandidate(c){return `${esc(c.city)} · ${esc(SCHOOL[c.school]||'Não informado')} · ${Number(c.experience)||0} ano(s) de experiência`}
-// ─── Site institucional e páginas públicas ────────────────────────────────
-function showcase(){const peeps=[['Marina Santos','Administração',96],['Luana Ferreira','Atendimento',91],['João Victor','Operações',87]];return `<div class="hero-art"><div class="hero-orbit"></div><div class="hero-circle"></div><div class="float-label first"><span class="float-icon">${ic('check-circle',19)}</span><div><strong style="display:block;font-size:12px">Lista pronta!</strong><span class="subtle">Talentos pré-selecionados</span></div></div><div class="showcase-card"><div class="showcase-header"><div><div class="subtle" style="font-weight:800">PRÉ-SELEÇÃO INTELIGENTE</div><strong style="font-size:16px;display:block;margin-top:2px">Auxiliar administrativo</strong></div><div class="mini-dot-group"><i></i><i></i><i></i></div></div>${peeps.map(([n,t,score],i)=>`<div class="showcase-person">${avatar(n,['','orange','green'][i])}<div style="flex:1"><div class="flex-between"><strong style="font-size:12px">${n}</strong><span class="match-score">${score}%</span></div><div class="subtle">${t}</div><div class="match-progress"><span style="width:${score}%"></span></div></div></div>`).join('')}<div class="flex-between" style="padding-top:14px"><span class="subtle">${ic('shield',13)} Revisão humana incluída</span><span class="tag green">Até 5 perfis</span></div></div><div class="float-label second"><span class="float-icon orange">${ic('clock',19)}</span><div><strong style="font-size:12px;display:block">Mais agilidade</strong><span class="subtle">Menos tempo na triagem</span></div></div></div>`}
-function home(){return `<main class="main"><section class="hero"><div class="container hero-grid"><div class="hero-copy"><span class="eyebrow"><span class="dot"></span> Recrutamento sem complicação</span><h1>Gente certa.<br><span class="accent-text">Oportunidade</span><br>na medida.</h1><p class="hero-lead">Para quem precisa contratar sem ter um RH. E para quem quer ser encontrado sem preencher o mesmo currículo mil vezes.</p><div class="hero-actions"><a class="btn btn-primary btn-lg" href="#/empresas">Quero contratar ${ic('arrow-right')}</a><a class="btn btn-outline btn-lg" href="#/vagas">Estou buscando uma vaga ${ic('search')}</a></div><div class="hero-note">${ic('check-circle')} Candidatos usam de graça <span>•</span> Primeiro anúncio grátis para novas empresas</div></div>${showcase()}</div></section><section class="trust-strip"><div class="container trust-content"><div class="statement">Pequenos negócios movimentam o emprego no país.<br><small style="font-weight:500">Dados citados no estudo da JJ, 1º sem. de 2026.</small></div><div class="stat"><strong>59%</strong><span>das vagas formais vieram de MPEs</span></div><div class="stat"><strong>543,5 mil</strong><span>empregos criados por MPEs</span></div><div class="stat"><strong>5,4%</strong><span>taxa de desemprego indicada</span></div></div></section><section class="section"><div class="container">${sectionHead('NOSSA PROPOSTA','Contratar pode ser bem mais simples.','A gente cuida da parte trabalhosa para você focar no que importa.',true)}<div class="grid-3">${feature('target','Perfis que fazem sentido','Você recebe até cinco profissionais compatíveis, em vez de uma pilha de currículos.','orange')}${feature('clock','Tempo de volta','Abertura de vagas simples, triagem organizada e foco em entrevistas — até pelo celular.')}${feature('message','Retorno para o candidato','Atualizações sobre pré-seleção e encerramento do processo, sem deixar ninguém no escuro.','green')}</div></div></section><section class="section section-muted"><div class="container">${sectionHead('PASSO A PASSO','Um caminho curto entre vaga e talento.','Quatro etapas transparentes. Sem filtros secretos ou promessas mágicas.')}<div class="grid-4">${[['01','Crie seu perfil','O profissional informa experiência, competências e disponibilidade.'],['02','Descreva a vaga','A empresa informa requisitos, local e jornada.'],['03','A gente encontra','Filtros e pontuação encontram perfis compatíveis.'],['04','Parta para a conversa','Após revisão humana, até cinco perfis chegam à empresa.']].map(([n,t,p],i)=>`<div class="step-card"><span class="step-number">${n}</span><h3>${t}</h3><p>${p}</p>${i<3?`<span class="step-arrow">${ic('arrow-right',16)}</span>`:''}</div>`).join('')}</div></div></section><section class="section"><div class="container split-section"><div><span class="label-kicker">UM JEITO DIFERENTE</span><h2 style="font-size:clamp(31px,4vw,45px);margin:15px 0">Menos planilhas.<br>Mais entrevistas.</h2><p style="font-size:15px;line-height:1.8">Para contratar um auxiliar administrativo, por exemplo, não é preciso abrir dezenas de currículos à noite. A empresa descreve o que precisa e recebe uma seleção enxuta.</p><ul class="check-list"><li>${ic('check-circle')} Triagem transparente baseada nos requisitos da vaga</li><li>${ic('check-circle')} Revisão humana antes de enviar a lista</li><li>${ic('check-circle')} Decisão final sempre nas mãos da empresa</li></ul><a class="btn btn-primary" href="#/como-funciona">Veja como a seleção acontece ${ic('arrow-right')}</a></div><div class="comparison-panel"><div class="comparison-box"><span class="tag red">Processo tradicional</span><h3 style="margin-top:23px">Currículos sem fim</h3><ul><li>Anúncios espalhados</li><li>Triagem manual</li><li>Requisitos desencontrados</li><li>Entrevistas demoradas</li></ul></div><div class="comparison-box featured"><span class="tag orange">Com a JJ</span><h3 style="margin-top:23px">Até 5 perfis</h3><ul><li>Vaga em poucos minutos</li><li>Compatibilidade pontuada</li><li>Lista revisada</li><li>Foco nas entrevistas</li></ul></div></div></div></section><section class="section section-muted"><div class="container">${sectionHead('PARA OS DOIS LADOS','Uma ponte. Duas boas histórias.','Uma experiência simples para quem contrata e para quem busca a próxima oportunidade.',true)}<div class="grid-2"><div class="feature-card" style="padding:32px"><div class="feature-icon orange">${ic('building')}</div><h3 style="font-size:24px">Sou uma empresa</h3><p style="margin-bottom:22px">Abra sua vaga, acompanhe as etapas e receba candidatos selecionados por compatibilidade. Sem depender de um time de RH.</p><a class="btn btn-primary" href="#/empresas">Conhecer solução ${ic('arrow-right')}</a></div><div class="feature-card" style="padding:32px"><div class="feature-icon">${ic('user')}</div><h3 style="font-size:24px">Sou candidato</h3><p style="margin-bottom:22px">Cadastre suas informações uma vez, encontre oportunidades e acompanhe o andamento das suas candidaturas gratuitamente.</p><a class="btn btn-outline" href="#/cadastro/candidato">Criar meu perfil ${ic('arrow-right')}</a></div></div></div></section><section class="section"><div class="container">${sectionHead('OPORTUNIDADES','Vagas para começar uma nova fase.','Explore oportunidades demonstrativas da nossa plataforma.')}<div class="grid-3">${db.jobs.filter(isOpen).slice(0,3).map(j=>jobCard(j)).join('')}</div><div class="text-center" style="margin-top:25px"><a class="btn btn-outline" href="#/vagas">Explorar todas as vagas ${ic('arrow-right')}</a></div></div></section><section class="section" style="padding-top:12px"><div class="container"><div class="dark-cta"><span class="label-kicker" style="color:#e9b182">COMECE COM A JJ SERVIÇOS</span><h2 style="margin-top:16px">O próximo talento da sua equipe pode estar aqui.</h2><p>Experimente a primeira vaga grátis e descubra uma forma mais leve de contratar.</p><div class="flex" style="flex-wrap:wrap;margin-top:22px"><a class="btn btn-orange" href="#/cadastro/empresa">Cadastrar minha empresa ${ic('arrow-right')}</a><a class="btn btn-white" href="#/planos">Conhecer os planos</a></div></div></div></section></main>`}
-function howItWorks(){const steps=[['Crie um perfil completo','Quem busca trabalho informa formação, experiências, competências, cidade e disponibilidade. O cadastro é gratuito.'],['Publique sua vaga com critérios','A empresa escolhe escolaridade mínima, competências obrigatórias, desejáveis, região e jornada.'],['Filtros eliminatórios e nota de 0 a 100','Quem não atende aos requisitos obrigatórios não entra. Os demais são pontuados com critérios definidos.'],['Revisão humana e lista curta','Um administrador confere o resultado e libera no máximo cinco perfis para a empresa.'],['Entrevista e retorno','A empresa decide quem entrevistar ou contratar, e o candidato recebe as atualizações no painel.']];return `<main>${pageHero('Processos simples.<br>Decisões melhores.','Conheça o fluxo da JJ Serviços e entenda exatamente como calculamos a compatibilidade.','COMO FUNCIONA')}<section class="section"><div class="container">${sectionHead('DO CADASTRO À ENTREVISTA','Cinco etapas, sem enrolação.','Cada etapa tem um propósito claro e um responsável.') }<div class="grid-2"><div>${steps.map(([t,p],i)=>`<div class="person-line" style="align-items:start;padding:20px 0">${avatar(String(i+1),'orange')}<div><h3 style="font-size:17px;margin-bottom:6px">${t}</h3><p style="font-size:13px;line-height:1.7;margin:0">${p}</p></div></div>`).join('')}</div><div><div class="soft-panel"><div class="feature-icon orange">${ic('target')}</div><h3 style="font-size:22px">Pontuação transparente</h3><p>Nosso MVP usa regras objetivas e revisáveis. Nenhuma IA decide quem deve ser contratado.</p>${[['Experiência na função',40],['Competências desejáveis',25],['Proximidade da região',25],['Disponibilidade',10]].map(([t,v])=>`<div style="margin:20px 0"><div class="flex-between"><strong style="font-size:12px">${t}</strong><strong>${v} pontos</strong></div><div class="progress-track" style="margin-top:8px"><span style="width:${v}%"></span></div></div>`).join('')}<div class="alert-info">${ic('shield')} Antes da pontuação, aplicamos escolaridade e competências obrigatórias. Se não atender, o perfil fica fora da lista.</div></div></div></div></div></section><section class="section section-muted"><div class="container">${sectionHead('SELEÇÃO RESPONSÁVEL','O que não entra no nosso filtro.','Compatibilidade profissional não depende de características pessoais.',true)}<div class="grid-4">${[['Idade','ou faixa etária'],['Sexo ou gênero','identidade pessoal'],['Raça ou religião','origem e crenças'],['Estado civil ou filhos','vida familiar']].map(([t,p])=>`<div class="feature-card text-center"><div class="feature-icon orange" style="margin:0 auto 17px">${ic('shield')}</div><h3>${t}</h3><p>${p}</p></div>`).join('')}</div><p class="text-center" style="margin-top:19px;font-size:12px">Deficiência não é critério eliminatório, ressalvadas particularidades de vagas afirmativas. O respeito à LGPD é requisito de implantação.</p></div></section><section class="section"><div class="container"><div class="dark-cta"><h2>Pronto para experimentar?</h2><p>Escolha como quer começar. É possível conhecer tudo na demonstração.</p><div class="flex" style="flex-wrap:wrap"><a class="btn btn-orange" href="#/cadastro/empresa">Quero contratar</a><a class="btn btn-white" href="#/cadastro/candidato">Quero uma oportunidade</a></div></div></div></section></main>`}
-function forCompanies(){return `<main>${pageHero('Você cuida do negócio.<br>Da triagem, a gente cuida.','Uma ferramenta feita para micro e pequenas empresas que não têm um setor de recursos humanos.','PARA EMPRESAS')}<section class="section"><div class="container split-section"><div><span class="label-kicker">DO PROBLEMA À SOLUÇÃO</span><h2 style="font-size:42px;margin:14px 0">Contrate sem virar recrutador nas horas vagas.</h2><p style="font-size:15px;line-height:1.8">Você sabe quem precisa para trabalhar ao seu lado. A JJ traduz isso em requisitos, organiza candidatos e entrega uma lista objetiva.</p><ul class="check-list"><li>${ic('check-circle')} Abrir uma vaga leva poucos minutos</li><li>${ic('check-circle')} Até cinco candidatos por seleção</li><li>${ic('check-circle')} Acompanhamento de entrevistas e contratação</li><li>${ic('check-circle')} Primeira vaga grátis para novas empresas</li></ul><a href="#/cadastro/empresa" class="btn btn-primary btn-lg">Cadastrar minha empresa ${ic('arrow-right')}</a></div><div class="svg-illustration"><svg width="410" height="310" viewBox="0 0 410 310" xmlns="http://www.w3.org/2000/svg"><rect x="25" y="24" width="360" height="250" rx="23" fill="#fff" stroke="#d6e2ed"/><rect x="25" y="24" width="360" height="49" rx="23" fill="#223e5c"/><path d="M25 52h360v21H25" fill="#223e5c"/><circle cx="49" cy="48" r="5" fill="#e49a54"/><circle cx="66" cy="48" r="5" fill="#87a8c9"/><rect x="59" y="103" width="120" height="14" rx="7" fill="#d7e3ef"/><rect x="59" y="127" width="170" height="10" rx="5" fill="#ebf0f5"/><rect x="59" y="157" width="291" height="62" rx="11" fill="#f5f8fb"/><circle cx="86" cy="188" r="17" fill="#e9b78e"/><rect x="117" y="173" width="103" height="10" rx="5" fill="#a4bfd7"/><rect x="117" y="192" width="151" height="8" rx="4" fill="#d3dfeb"/><rect x="285" y="174" width="48" height="29" rx="9" fill="#e3f6ec"/><text x="294" y="192" font-family="Arial" font-size="12" font-weight="bold" fill="#238866">96%</text/><circle cx="343" cy="254" r="44" fill="#e39b58"/><path d="m324 254 13 13 26-29" fill="none" stroke="white" stroke-width="7" stroke-linecap="round" stroke-linejoin="round"/></svg></div></div></section><section class="section section-muted"><div class="container">${sectionHead('FEITO PARA O SEU TAMANHO','Tudo que você precisa, sem complexidade.','Ideal para comércio local, alimentação, serviços e cargos operacionais ou administrativos.',true)}<div class="grid-3">${feature('file','Vaga com requisitos','Defina o cargo, escolaridade, habilidades e horário com clareza.')}${feature('target','Pré-seleção enxuta','Receba perfis com pontuação e justificativa, em vez de dezenas de anexos.','orange')}${feature('bar-chart','Visão de cada processo','Saiba se a vaga está aberta, em triagem, com lista pronta ou encerrada.','green')}</div></div></section><section class="section"><div class="container">${sectionHead('ESCOLHA SEU PLANO','A solução cabe no seu negócio.','Valores hipotéticos do piloto, sujeitos a validação comercial.',true)}${priceCards()}<p class="subtle text-center" style="margin-top:23px">Planos e cobranças ainda não estão integrados neste protótipo.</p></div></section></main>`}
-function priceCards(){const arr=[['Por vaga',79,'por vaga aberta','Para contratações ocasionais',['Pagamento por vaga','Lista de até 5 perfis','Triagem com revisão humana']],['Básico',149,'por mês','Para pequenos times em crescimento',['Até 3 vagas por mês','Acompanhamento das vagas','Lista de até 5 perfis']],['Profissional',299,'por mês','Para quem contrata com frequência',['Vagas ilimitadas','Histórico de seleções','Suporte prioritário']]];return `<div class="pricing">${arr.map(([name,price,cad,descr,feats],i)=>`<div class="price-card ${i===1?'featured':''}">${i===1?'<div class="best-tag">Mais popular</div>':''}<h3>${name}</h3><p style="font-size:12px;margin:8px 0 0">${descr}</p><div class="price">R$ ${price}</div><p class="price-caption">${cad}</p><a class="btn ${i===1?'btn-orange':'btn-primary'}" href="#/cadastro/empresa">Começar agora ${ic('arrow-right')}</a><ul>${feats.map(t=>`<li>${ic('check-circle')} ${t}</li>`).join('')}</ul></div>`).join('')}</div>`}
-function pricing(){return `<main>${pageHero('Um preço justo para<br>contratar melhor.','Candidatos participam gratuitamente. A empresa paga pelo serviço de triagem.','PLANOS E PREÇOS')}<section class="section"><div class="container">${priceCards()}<div class="alert-info" style="margin-top:22px">${ic('info')} Os preços são hipóteses do projeto original para o piloto. Este site não processa pagamentos. A primeira vaga grátis também é uma regra prevista para validação, não um benefício comercial ativo.</div></div></section><section class="section section-muted"><div class="container-narrow">${sectionHead('DÚVIDAS','Perguntas frequentes.','As principais respostas para começar com tranquilidade.') }<div class="faq-list">${[['O candidato precisa pagar?','Não. O cadastro e o acompanhamento das oportunidades são gratuitos para profissionais.'],['Quantos perfis eu recebo por vaga?','Até cinco perfis compatíveis, selecionados com filtros, pontuação e revisão humana. Se não houver perfis elegíveis, a lista pode ser menor.'],['A JJ garante a contratação?','Não. A JJ faz uma pré-seleção. A empresa conduz as entrevistas e decide quem contratar.'],['Posso usar o sistema no celular?','Sim. A interface foi desenvolvida para se adaptar a telas pequenas e grandes.'],['Este site aceita pagamentos de verdade?','Não. É um protótipo demonstrativo acadêmico, sem cobrança ou processamento financeiro.']].map(([q,a])=>`<details class="faq-item"><summary>${q}${ic('chevron-down')}</summary><p>${a}</p></details>`).join('')}</div></div></section></main>`}
-let jobFilters = {q:'',city:'',sector:'',mode:'all'};
-function listJobs(){const jobs=db.jobs.filter(j=>(jobFilters.mode==='all'||j.status!=='closed')&&(!jobFilters.q||norm(j.title+' '+getCo(j.companyId)?.name+' '+j.description).includes(norm(jobFilters.q)))&&(!jobFilters.city||j.city===jobFilters.city)&&(!jobFilters.sector||j.sector===jobFilters.sector));const active=db.jobs.filter(isOpen).length;const c=gated('candidate')?me():null;return `<main>${pageHero('Oportunidades que<br>combinam com você.','Explore vagas de demonstração, veja requisitos e acompanhe suas candidaturas em um só lugar.','ENCONTRE SUA VAGA')}<div class="page-shell"><div class="container">${crumbs([['/vagas','Vagas']])}<form id="job-search" class="filters"><div class="input-wrap">${ic('search')}<input name="q" aria-label="Buscar vaga" placeholder="Cargo, empresa ou palavra-chave" value="${esc(jobFilters.q)}"/></div><div class="input-wrap">${ic('map-pin')}<select name="city" aria-label="Cidade"><option value="">Todas as cidades</option>${opts(CITIES,jobFilters.city)}</select></div><div class="input-wrap">${ic('filter')}<select name="sector" aria-label="Setor"><option value="">Todos os setores</option>${opts(SECTORS,jobFilters.sector)}</select></div><button class="btn btn-primary" type="submit">Buscar ${ic('arrow-right')}</button></form><div class="jobs-layout"><div><div class="flex-between" style="margin-bottom:18px"><div><h2 style="font-size:20px;margin:0">${jobs.length} oportunidade${jobs.length!==1?'s':''} encontrada${jobs.length!==1?'s':''}</h2><div class="subtle">${active} vaga${active!==1?'s':''} não encerrada${active!==1?'s':''}</div></div><button class="pill-filter ${jobFilters.mode==='open'?'active':''}" data-action="job-filter" data-value="${jobFilters.mode==='open'?'all':'open'}">${ic('filter',14)} ${jobFilters.mode==='open'?'Mostrar todas':'Só vagas ativas'}</button></div><div class="job-list">${jobs.length?jobs.map(j=>jobCard(j,false,c)).join(''):empty('Nenhuma vaga por aqui','Experimente alterar seus filtros para encontrar outras oportunidades.',`<button class="btn btn-outline" data-action="clear-search">Limpar filtros</button>`)}</div></div><aside class="side-panel"><div class="feature-icon orange">${ic('sparkles')}</div><h3>Seu talento merece ser visto.</h3><p style="font-size:13px;line-height:1.75">Um perfil completo ajuda a plataforma a mostrar oportunidades mais adequadas.</p><div class="divider"></div><div class="flex-between" style="margin-bottom:10px"><span class="subtle">Cadastro gratuito</span>${tag('Sem mensalidade','green')}</div><a class="btn btn-primary w-full" href="${link(c?'/candidato/perfil':'/cadastro/candidato')}">${c?'Atualizar perfil':'Criar meu perfil'} ${ic('arrow-right')}</a></aside></div></div></div></main>`}
-function jobDetail(jobId){const j=getJob(jobId);if(!j)return notFound();const co=getCo(j.companyId)||{name:'Empresa não informada'};const cand=gated('candidate')?me():null;const result=cand?match(cand,j):null;const applied=cand&&db.applications.find(a=>a.candidateId===cand.id&&a.jobId===j.id);const canApply=j.status!=='closed';const button=applied?`<button class="btn btn-green w-full" disabled>${ic('check-circle')} Inscrição registrada</button>`:cand?`<button class="btn btn-primary w-full" data-action="apply" data-id="${esc(j.id)}" ${!canApply?'disabled':''}>${canApply?'Tenho interesse na vaga':'Processo encerrado'} ${ic('arrow-right')}</button>`:`<a href="#/entrar" class="btn btn-primary w-full">Entrar para me candidatar ${ic('arrow-right')}</a>`;return `<main><div class="page-shell"><div class="container">${crumbs([['/vagas','Vagas'],['/vaga/'+j.id,j.title]])}<a class="back-link" href="#/vagas">${ic('arrow-left')} Voltar para vagas</a><div class="detail-grid"><article class="detail-main"><div class="flex" style="gap:13px">${avatar(co.name,'orange','large')}<div><span class="subtle">${esc(co.name)}</span><h1 style="margin:3px 0 0">${esc(j.title)}</h1></div></div><div class="tags" style="margin-top:20px">${jobTags(j)} ${statusTag(j.status)}</div><h2>Sobre esta oportunidade</h2><p>${esc(j.description)}</p><h2>O que precisamos</h2><ul><li>Escolaridade mínima: ${esc(SCHOOL[j.school])}</li>${(j.requiredSkills||[]).map(x=>`<li>Competência obrigatória: ${esc(x)}</li>`).join('')}<li>Jornada: ${esc(j.schedule)}</li>${j.locationRequired?'<li>Residir na cidade da vaga (obrigatório)</li>':''}</ul><h2>O que valorizamos</h2><ul>${(j.desiredSkills||[]).map(x=>`<li>${esc(x)}</li>`).join('')}<li>Experiência desejável: ${Number(j.desiredExperience)||0} ano(s)</li></ul><h2>Benefícios</h2><p>${esc(j.benefits||'A combinar com a empresa.')}</p><div class="alert-info" style="margin-top:30px">${ic('shield')} A JJ não usa idade, gênero, raça, religião ou situação familiar como critérios de seleção. A pré-seleção não garante contratação.</div></article><aside class="detail-aside"><span class="subtle">REMUNERAÇÃO ESTIMADA</span><div style="font-size:30px;font-weight:900;letter-spacing:-.05em;color:var(--navy);margin:6px 0 20px">${money(j.salary)}<small style="font-size:12px;color:var(--muted);letter-spacing:0"> /mês</small></div>${button}<div class="divider"></div>${[['building','Empresa',co.name],['map-pin','Localização',j.city],['clock','Jornada',j.schedule],['briefcase','Contrato',j.contract],['calendar','Publicada',fmtDate(j.created)]].map(([i,t,v])=>`<div class="detail-metric"><span class="muted">${ic(i,15)} ${t}</span><strong>${esc(v)}</strong></div>`).join('')}${result?`<div class="divider"></div><h3 style="font-size:15px">Compatibilidade do seu perfil</h3>${result.eligible?`<div class="profile-score-ring" style="background:conic-gradient(var(--green) 0 ${result.score}%,#edf0f4 ${result.score}% 100%)"><span>${result.score}%</span></div><p class="text-center tiny">Pontuação estimada, sujeita à revisão humana.</p>`:`<div class="alert-info alert-warn">${ic('info')} Requisitos não atendidos: ${esc(result.missing.join(', '))}. Você ainda pode registrar interesse, mas não será elegível para a lista.</div>`}<a href="#/candidato/perfil" class="btn btn-outline btn-sm w-full">Revisar meu perfil</a>`:''}</aside></div></div></div></main>`}
-function about(){return `<main>${pageHero('Uma contratação mais leve<br>começa com uma ideia simples.','Uma proposta de recrutamento rápido e acessível para pequenos negócios.','SOBRE A JJ')}<section class="section"><div class="container split-section"><div><span class="label-kicker">NOSSA MISSÃO</span><h2 style="font-size:41px;margin:16px 0">Diminuir a distância entre uma vaga e alguém preparado.</h2><p style="font-size:15px;line-height:1.85">A JJ Serviços nasceu de uma questão comum: pequenas empresas precisam contratar, mas quase nunca têm um RH dedicado. Enquanto isso, candidatos repetem cadastros e muitas vezes não recebem resposta.</p><p style="font-size:15px;line-height:1.85">Nossa proposta é unir os dois lados por meio de uma lista curta de profissionais compatíveis — com critérios claros e revisão humana.</p><span class="tag orange">Conceito: Tiago Pereira da Silva • Fundador e CEO</span></div><div class="soft-panel"><span class="label-kicker">PILOTO PLANEJADO</span><h3 style="font-size:26px;margin:19px 0">Começar pequeno. Aprender rápido.</h3><div class="grid-3" style="gap:8px;margin:20px 0">${[['1','cidade'],['2','setores'],['3','meses']].map(([n,t])=>`<div class="text-center" style="background:#fff;border-radius:12px;padding:19px 8px"><strong style="font-size:30px">${n}</strong><div class="subtle">${t}</div></div>`).join('')}</div><p>O protótipo demonstra a primeira versão. Pagamentos, integrações de mensagens e infraestrutura de produção são etapas futuras.</p></div></div></section><section class="section section-muted"><div class="container">${sectionHead('METAS DO PILOTO','Como vamos medir se funciona.','Objetivos para os primeiros três meses. Ainda não são resultados obtidos.')}<div class="dash-card" style="padding:0;overflow:hidden"><div class="table-scroll"><table class="data-table" style="font-size:13px"><thead><tr><th>Indicador</th><th>Meta planejada</th></tr></thead><tbody>${[['Tempo de entrega de uma lista','Até 48 horas'],['Perfis enviados chamados para entrevista','50% ou mais'],['Vagas que terminam em contratação','1 a cada 2 vagas'],['Empresas que abrem uma segunda vaga','40% ou mais'],['Tempo de cadastro do candidato','Até 5 minutos']].map(([a,b])=>`<tr><td>${a}</td><td><strong>${b}</strong></td></tr>`).join('')}</tbody></table></div></div></div></section><section class="section"><div class="container">${sectionHead('ESTRATÉGIA DO PILOTO','Primeiro, formar a base. Depois, abrir vagas.','Divulgação local para crescer com qualidade, antes de expandir.')}<div class="grid-2"><div class="feature-card"><div class="feature-icon">${ic('users')}</div><h3>Candidatos primeiro</h3><p>Parcerias com escolas técnicas e faculdades, grupos de vagas e divulgação em comunidades locais.</p></div><div class="feature-card"><div class="feature-icon orange">${ic('building')}</div><h3>Depois, as empresas</h3><p>Visitas a pequenos comércios, primeira vaga grátis e indicação entre negócios para validar o serviço.</p></div></div></div></section><section class="section section-muted"><div class="container">${sectionHead('O QUE VEM DEPOIS' ,'O plano de evolução.','As três fases apresentadas na proposta original.',true)}<div class="grid-3">${[['Meses 1–3','MVP e piloto','Construir a versão funcional, iniciar piloto em uma cidade e acompanhar métricas.'],['Meses 4–6','Primeiras receitas','Validar planos pagos, ajustar critérios, preços e expansão de setores.'],['Meses 7–12','Crescimento','Considerar avisos por WhatsApp, IA para ranqueamento e novas cidades.']].map(([t,h,p])=>`<div class="feature-card"><span class="eyebrow">${t}</span><h3 style="margin-top:18px">${h}</h3><p>${p}</p></div>`).join('')}</div></div></section></main>`}
-function privacy(){return `<main>${pageHero('Sua privacidade importa.','Entenda como o protótipo utiliza os dados e quais cuidados são necessários para um produto real.','PRIVACIDADE E DADOS')}<div class="page-shell"><div class="container-narrow"><div class="dash-card" style="padding:32px"><div class="alert-info">${ic('info')} Esta é uma demonstração local, sem servidor, banco de dados remoto ou cadastro real. Não insira CPF, senha verdadeira ou informações sensíveis.</div><h2>1. Dados usados no protótipo</h2><p>Nome, e-mail, telefone, cidade, escolaridade, experiências, competências e disponibilidade simulam o cadastro. Os exemplos iniciais são inteiramente fictícios.</p><h2>2. Armazenamento</h2><p>As informações digitadas ficam no <strong>localStorage</strong> do navegador que abrir este projeto. Elas não são enviadas a um servidor pela aplicação.</p><h2>3. Consentimento e exclusão</h2><p>O cadastro de candidato pede consentimento demonstrativo. No painel, você pode excluir o perfil cadastrado. A página de configuração administrativa permite limpar todos os dados locais.</p><h2>4. Critérios de seleção</h2><p>São usados escolaridade mínima, competências obrigatórias e quatro componentes de pontuação: experiência, competências desejáveis, proximidade e disponibilidade. Características pessoais protegidas não fazem parte da triagem.</p><h2>5. Antes de publicar de verdade</h2><p>Uma implementação real exigirá política de privacidade definitiva, base legal apropriada, autenticação e autorização no servidor, criptografia, infraestrutura segura, canais de exercício de direitos e procedimentos LGPD auditáveis.</p><a class="btn btn-outline" href="#/contato">Fale sobre o projeto ${ic('arrow-right')}</a></div></div></div></main>`}
-function contact(){return `<main>${pageHero('Vamos conversar?','Conheça a proposta e deixe uma mensagem de demonstração para a equipe.','CONTATO')}<div class="page-shell"><div class="container grid-2"><div class="dash-card"><h2 style="font-size:25px">Deixe sua mensagem</h2><p>Este formulário demonstra a interface de contato. Não envia e-mails reais.</p><form id="contact-form"><div class="field"><label>Seu nome</label><input name="name" required placeholder="Como podemos chamar você?" maxlength="100" /></div><div class="field"><label>E-mail</label><input type="email" name="email" required placeholder="voce@email.com" /></div><div class="field"><label>Assunto</label><select name="topic">${opts(['Parceria','Sou uma empresa','Sou candidato','Outros'])}</select></div><div class="field"><label>Mensagem</label><textarea name="message" required minlength="10" placeholder="Escreva aqui..."></textarea></div><button class="btn btn-primary" type="submit">Enviar demonstração ${ic('send')}</button></form></div><div><div class="soft-panel"><div class="feature-icon orange">${ic('message')}</div><h3 style="font-size:23px">Pessoas conectadas, negócios fortalecidos.</h3><p>Esta plataforma faz parte da apresentação da ideia JJ Serviços. Dados de contato reais ainda não foram informados no PDF.</p><div class="divider"></div><div class="flex">${ic('shield')} <span class="subtle">Para testar sem revelar dados pessoais, use as contas de demonstração.</span></div><a href="#/entrar" class="btn btn-outline" style="margin-top:20px">Acessar demonstração</a></div></div></div></div></main>`}
-function authLayout(title,desc,inner){return `<div class="auth-wrap"><aside class="auth-side"><span class="eyebrow"><span class="dot"></span> JJ Serviços</span><h2>Menos burocracia.<br>Mais conexões.</h2><p>Uma plataforma construída para aproximar pequenos negócios de profissionais com potencial — de forma leve e transparente.</p><div style="margin-top:25px"><div class="auth-side-bullet">${ic('check-circle')} Cadastro único de candidato</div><div class="auth-side-bullet">${ic('check-circle')} Até cinco perfis por vaga</div><div class="auth-side-bullet">${ic('check-circle')} Processo acompanhado em tempo real no navegador</div></div><div style="margin-top:45px">${brand()}</div></aside><div class="auth-form-wrap"><div class="auth-form"><a href="#/" class="back-link">${ic('arrow-left')} Voltar ao site</a><h1>${title}</h1><p class="desc">${desc}</p>${inner}</div></div></div>`}
-let loginRole='candidate';
-function login(){return authLayout('Bem-vindo de volta.','Escolha um perfil de teste para conhecer os painéis do sistema.',`<div class="role-switch" id="role-switch"><button type="button" data-action="login-role" data-value="candidate" class="role-option ${loginRole==='candidate'?'active':''}">${ic('user')} Candidato</button><button type="button" data-action="login-role" data-value="company" class="role-option ${loginRole==='company'?'active':''}">${ic('building')} Empresa</button><button type="button" data-action="login-role" data-value="admin" class="role-option ${loginRole==='admin'?'active':''}">${ic('shield')} Admin</button></div><form id="login-form"><div class="field"><label>E-mail de demonstração</label><input name="email" type="email" placeholder="${loginRole==='candidate'?'candidato@demo.jj':loginRole==='company'?'empresa@demo.jj':'admin@demo.jj'}" value="${loginRole==='candidate'?'candidato@demo.jj':loginRole==='company'?'empresa@demo.jj':'admin@demo.jj'}" required /></div><button class="btn btn-primary w-full" style="margin-top:4px" type="submit">Entrar no painel ${ic('arrow-right')}</button></form><button class="btn btn-outline w-full" style="margin-top:10px" data-action="demo-login" data-value="${loginRole}">${ic('zap')} Acesso rápido de demonstração</button><div class="demo-hint">${ic('info',16)} <strong>Acesso simulado:</strong> esta versão não verifica senha e não possui autenticação real. Só use dados fictícios. Para produção, será necessário backend seguro.</div><p class="text-center" style="font-size:12px;margin-top:22px">Ainda não tem perfil? <a class="link-inline" href="#/cadastro/candidato">Cadastrar candidato</a> · <a class="link-inline" href="#/cadastro/empresa">Cadastrar empresa</a></p>`)}
-function candidateFields(c={}){return `<h3 class="form-section-title">Dados pessoais e profissionais</h3><div class="field-grid"><div class="field"><label>Nome completo *</label><input name="name" maxlength="100" required placeholder="Seu nome" value="${esc(c.name||'')}" /></div><div class="field"><label>E-mail *</label><input type="email" name="email" required placeholder="voce@email.com" value="${esc(c.email||'')}" /></div><div class="field"><label>Celular</label><input type="tel" name="phone" placeholder="(81) 99999-9999" maxlength="25" value="${esc(c.phone||'')}" /></div><div class="field"><label>Cidade *</label><select name="city" required><option value="">Selecione...</option>${opts(CITIES,c.city||'')}</select></div><div class="field"><label>Escolaridade *</label><select name="school" required>${opts(Object.entries(SCHOOL),c.school||'medio')}</select></div><div class="field"><label>Experiência na área (anos) *</label><input type="number" name="experience" min="0" max="50" step="1" required value="${Number(c.experience)||0}" /></div><div class="field"><label>Disponibilidade *</label><select name="availability" required>${opts(AVAILS,c.availability||'Integral')}</select></div><div class="field"><label>Cargo de interesse</label><input name="roleInterest" maxlength="100" placeholder="Ex.: Auxiliar administrativo" value="${esc(c.roleInterest||'')}" /></div></div><div class="field"><label>Competências (separadas por vírgula) *</label><input name="skills" required placeholder="Excel, Atendimento, Organização" value="${esc((c.skills||[]).join(', '))}" /><span class="hint">Use termos específicos que sejam verdadeiros. Ex.: Excel, Atendimento, Estoque.</span></div><div class="field"><label>Conte um pouco sobre você</label><textarea name="bio" maxlength="1000" placeholder="Conte sobre sua experiência e seus objetivos...">${esc(c.bio||'')}</textarea></div><label class="field-check"><input type="checkbox" name="consent" ${c.consent?'checked':''} required /> <span>Concordo com o uso demonstrativo dos meus dados profissionais para calcular compatibilidade com vagas. <a href="#/privacidade" class="link-inline">Saiba mais sobre privacidade.</a></span></label>`}
-function companyFields(co={}){return `<h3 class="form-section-title">Dados do negócio</h3><div class="field-grid"><div class="field"><label>Nome da empresa *</label><input required name="name" maxlength="100" value="${esc(co.name||'')}" placeholder="Ex.: Mercado do Bairro" /></div><div class="field"><label>Seu nome *</label><input required name="contact" maxlength="100" value="${esc(co.contact||'')}" placeholder="Responsável pela contratação" /></div><div class="field"><label>E-mail *</label><input required type="email" name="email" value="${esc(co.email||'')}" placeholder="contato@empresa.com" /></div><div class="field"><label>Celular de contato</label><input type="tel" name="phone" value="${esc(co.phone||'')}" placeholder="(81) 99999-9999" /></div><div class="field"><label>Cidade *</label><select required name="city"><option value="">Selecione...</option>${opts(CITIES,co.city||'')}</select></div><div class="field"><label>Setor *</label><select required name="sector">${opts(SECTORS,co.sector||'Varejo')}</select></div></div><div class="field"><label>Apresente o negócio</label><textarea name="bio" maxlength="1000" placeholder="O que sua empresa faz e como é sua equipe?">${esc(co.bio||'')}</textarea></div>`}
-function signup(type){const candidate=type!=='empresa';return authLayout(candidate?'Crie seu perfil.':'Cadastre seu negócio.',candidate?'Uma única vez. Gratuito. E pronto para novas oportunidades.':'Vamos encontrar pessoas compatíveis para trabalhar com você.',`<div class="flex" style="gap:8px;margin-bottom:24px"><a class="btn ${candidate?'btn-primary':'btn-outline'} btn-sm" href="#/cadastro/candidato">${ic('user')} Sou candidato</a><a class="btn ${!candidate?'btn-primary':'btn-outline'} btn-sm" href="#/cadastro/empresa">${ic('building')} Sou empresa</a></div><form id="${candidate?'signup-candidate':'signup-company'}">${candidate?candidateFields():companyFields()}${!candidate?`<label class="field-check"><input type="checkbox" required name="consent" /><span>Declaro estar ciente de que este cadastro é apenas uma demonstração, sem publicação real de vagas.</span></label>`:''}<button class="btn btn-primary btn-lg w-full" type="submit">${candidate?'Criar meu perfil':'Criar conta de empresa'} ${ic('arrow-right')}</button></form><p class="text-center" style="font-size:12px;margin-top:20px">Já tem cadastro? <a class="link-inline" href="#/entrar">Entrar</a></p>`)}
-function notFound(){return `<main class="container" style="padding:90px 0">${empty('Página não encontrada','Não achamos a rota que você solicitou.',`<a class="btn btn-primary" href="#/">Ir para o início ${ic('arrow-right')}</a>`)}</main>`}
-// ─── Área do candidato ────────────────────────────────────────────────────
-function completion(c){if(!c)return 0;return Math.round(100*[c.name,c.email,c.phone,c.city,c.school,c.availability,c.roleInterest,c.bio,c.skills?.length,c.consent].filter(Boolean).length/10)}
-function candidateHome(){if(!gated('candidate'))return redirectRequired('candidate');const c=me();const apps=getAppsByCand(c.id);const rec=db.jobs.filter(isOpen).map(j=>({...j,matched:match(c,j)})).filter(j=>j.matched.eligible).sort((a,b)=>b.matched.score-a.matched.score).slice(0,3);const notes=db.notifications.filter(n=>n.candidateId===c.id&&!n.read);return dashboard('candidate','/candidato',`${dashHead('ÁREA DO CANDIDATO',`Olá, ${esc(c.name.split(' ')[0])}! 👋`,'Seu próximo passo profissional começa por aqui.',`<a class="btn btn-primary" href="#/vagas">${ic('search')} Explorar vagas</a>`)}<div class="stats-grid">${stat('briefcase','Minhas inscrições',apps.length,'Vagas em que mostrou interesse')}${stat('target','Pré-seleções',apps.filter(a=>['Pré-selecionado','Entrevista','Contratado'].includes(a.status)).length,'Perfis selecionados','orange')}${stat('bell','Novidades',notes.length,'Avisos ainda não lidos','green')}${stat('user','Perfil completo',completion(c)+'%','Dados de cadastro preenchidos')}</div><div class="dash-two-col"><div>${dashCard('Oportunidades que combinam com você',rec.length?`<div class="profile-list">${rec.map(j=>`<div class="person-line"><div class="company-symbol">${esc(initials(getCo(j.companyId)?.name))}</div><div style="flex:1;min-width:0"><h4><a href="#/vaga/${esc(j.id)}">${esc(j.title)}</a></h4><p>${esc(getCo(j.companyId)?.name||'Empresa')} · ${esc(j.city)} · ${money(j.salary)}</p></div><span class="tag green">${j.matched.score}%</span><a href="#/vaga/${esc(j.id)}" class="btn btn-outline btn-sm">Ver</a></div>`).join('')}</div>`:empty('Atualize suas competências','No momento, não há vagas que atendam aos requisitos obrigatórios do seu perfil.',`<a href="#/candidato/perfil" class="btn btn-outline">Editar perfil</a>`),`<a href="#/vagas" class="link-inline" style="font-size:12px">Ver vagas ${ic('arrow-right',13)}</a>`)}${dashCard('Minhas candidaturas recentes',apps.length?`<div class="table-scroll"><table class="data-table"><thead><tr><th>Vaga</th><th>Status</th><th>Data</th></tr></thead><tbody>${apps.slice(-4).reverse().map(a=>`<tr><td><strong>${esc(getJob(a.jobId)?.title||'Vaga excluída')}</strong></td><td>${tag(a.status,applicationTag(a.status))}</td><td>${fmtDate(a.date)}</td></tr>`).join('')}</tbody></table></div>`:empty('Nenhuma inscrição ainda','Visite o catálogo e registre seu interesse em uma vaga.','<a href="#/vagas" class="btn btn-outline">Buscar vagas</a>'),`<a class="link-inline" href="#/candidato/candidaturas" style="font-size:12px">Ver todas ${ic('arrow-right',13)}</a>`)}</div><div>${dashCard('Seu perfil profissional',`<div class="flex-between"><div><strong style="font-size:27px">${completion(c)}%</strong><div class="subtle">de preenchimento</div></div><span class="feature-icon orange" style="margin:0">${ic('user')}</span></div><div class="progress-track" style="margin:17px 0 12px"><span style="width:${completion(c)}%"></span></div><p style="font-size:12px">${esc(SCHOOL[c.school])} · ${c.experience} ano(s) de experiência</p><div class="candidate-tags" style="margin:15px 0">${c.skills.slice(0,5).map(s=>tag(s)).join('')}</div><a href="#/candidato/perfil" class="btn btn-outline w-full">${ic('edit')} Editar perfil</a>`)}${dashCard('Últimas atualizações',notes.length?notes.slice(0,3).map(n=>`<div class="notice-item"><span class="feature-icon green">${ic('bell',16)}</span><div><h4>${esc(n.title)}</h4><p>${esc(short(n.message,100))}</p></div></div>`).join(''):empty('Tudo em dia','Você não tem notificações não lidas.'),`<a class="link-inline" href="#/candidato/notificacoes" style="font-size:12px">Ver mensagens ${ic('arrow-right',13)}</a>`)}</div></div>`)}
-function candidateProfile(){if(!gated('candidate'))return redirectRequired('candidate');const c=me();return dashboard('candidate','/candidato/perfil',`${dashHead('MEUS DADOS','Meu perfil profissional','Mantenha suas informações atualizadas para melhorar a compatibilidade.') }<div class="dash-two-col"><div>${dashCard('Editar informações',`<form id="profile-form">${candidateFields(c)}<div class="form-actions"><a href="#/candidato" class="btn btn-outline">Cancelar</a><button class="btn btn-primary" type="submit">${ic('check')} Salvar alterações</button></div></form>`)}</div><div>${dashCard('Seu cadastro',`<div class="flex" style="margin-bottom:16px">${avatar(c.name,'','large')}<div><strong>${esc(c.name)}</strong><div class="subtle">${esc(c.email)}</div></div></div><span class="tag green">${ic('check-circle',12)} Perfil ativo</span><div class="divider"></div><div class="flex-between"><span class="subtle">Preenchimento</span><strong>${completion(c)}%</strong></div><div class="progress-track" style="margin-top:9px"><span style="width:${completion(c)}%"></span></div><div class="divider"></div><div class="subtle">Última atualização</div><strong>${fmtDate(c.updated)}</strong>`)}${dashCard('Privacidade',`<p style="font-size:12px">Controle seus dados neste protótipo. Excluir o perfil também remove suas inscrições e notificações locais.</p><button class="btn btn-danger btn-sm" data-action="delete-profile">${ic('trash')} Excluir meu perfil</button>`)}</div></div>`)}
-function candidateApplications(){if(!gated('candidate'))return redirectRequired('candidate');const apps=getAppsByCand(me().id).slice().sort((a,b)=>new Date(b.date)-new Date(a.date));return dashboard('candidate','/candidato/candidaturas',`${dashHead('ACOMPANHAMENTO','Minhas candidaturas','Acompanhe cada etapa e saiba quando o processo evolui.',`<a href="#/vagas" class="btn btn-primary">${ic('search')} Encontrar mais vagas</a>`)}${dashCard('Histórico de inscrições',apps.length?`<div class="table-scroll"><table class="data-table"><thead><tr><th>Oportunidade</th><th>Empresa</th><th>Inscrição</th><th>Situação</th><th></th></tr></thead><tbody>${apps.map(a=>{const j=getJob(a.jobId);return `<tr><td><strong>${esc(j?.title||'Vaga indisponível')}</strong></td><td>${esc(j?getCo(j.companyId)?.name||'—':'—')}</td><td>${fmtDate(a.date)}</td><td>${tag(a.status,applicationTag(a.status))}</td><td><a href="#/vaga/${esc(a.jobId)}" class="btn btn-outline btn-sm">Detalhes</a></td></tr>`}).join('')}</tbody></table></div>`:empty('Você ainda não se candidatou','Encontre uma oportunidade e clique em “Tenho interesse na vaga”.',`<a href="#/vagas" class="btn btn-primary">Explorar vagas</a>`))}<div class="alert-info" style="margin-top:10px">${ic('info')} Inscrição e pré-seleção não garantem entrevista ou contratação. A decisão final pertence à empresa.</div>`)}
-function candidateNotifications(){if(!gated('candidate'))return redirectRequired('candidate');const notices=db.notifications.filter(n=>n.candidateId===me().id).sort((a,b)=>new Date(b.date)-new Date(a.date));return dashboard('candidate','/candidato/notificacoes',`${dashHead('CENTRAL DE ATUALIZAÇÕES','Notificações','Mensagens sobre seu perfil e os processos seletivos.',`<button class="btn btn-outline" data-action="read-all">${ic('check-circle')} Marcar todas como lidas</button>`)}${dashCard('Sua caixa de mensagens',notices.length?notices.map(n=>`<div class="notice-item" style="opacity:${n.read?'.66':'1'}"><div class="feature-icon ${n.read?'':'orange'}">${ic(n.read?'mail':'bell')}</div><div style="flex:1"><div class="flex" style="gap:8px;flex-wrap:wrap"><h4>${esc(n.title)}</h4>${!n.read?tag('Nova','orange'):''}</div><p>${esc(n.message)}</p><span class="subtle">${fmtDate(n.date)}</span></div>${!n.read?`<button class="btn btn-outline btn-sm" data-action="read-notification" data-id="${esc(n.id)}">Marcar lida</button>`:''}</div>`).join(''):empty('Sem notificações','Quando houver novidades sobre uma vaga, elas aparecerão aqui.'))}`)}
-// ─── Área da empresa ───────────────────────────────────────────────────────
-function companyHome(){if(!gated('company'))return redirectRequired('company');const co=me();const jobs=ownJobs();const active=jobs.filter(isOpen);const pre=jobs.filter(j=>j.status==='sent');const interview=jobs.flatMap(j=>getAppsByJob(j.id)).filter(a=>a.status==='Entrevista').length;const summary=jobs.slice().sort((a,b)=>new Date(b.created)-new Date(a.created));return dashboard('company','/empresa',`${dashHead('PAINEL DA EMPRESA',`Bom dia, ${esc(co.contact.split(' ')[0])}! 👋`,'Gerencie suas vagas e encontre pessoas para fortalecer seu time.',`<a href="#/empresa/nova-vaga" class="btn btn-primary">${ic('plus')} Abrir nova vaga</a>`)}<div class="stats-grid">${stat('briefcase','Total de vagas',jobs.length,'Vagas cadastradas')}${stat('clock','Processos ativos',active.length,'Ainda não encerrados','orange')}${stat('users','Listas enviadas',pre.length,'Pré-seleções disponíveis','green')}${stat('calendar','Entrevistas',interview,'Candidatos em entrevista')}</div><div class="dash-two-col"><div>${dashCard('Acompanhe suas vagas',summary.length?`<div class="table-scroll"><table class="data-table"><thead><tr><th>Cargo</th><th>Data</th><th>Status</th><th>Perfis</th><th></th></tr></thead><tbody>${summary.map(j=>`<tr><td><strong>${esc(j.title)}</strong><div class="subtle">${esc(j.city)}</div></td><td>${fmtDate(j.created)}</td><td>${statusTag(j.status)}</td><td>${j.status==='sent'?j.shortlist.length+' recebidos':'Aguardando'}</td><td><a class="btn btn-outline btn-sm" href="#/empresa/vaga/${esc(j.id)}">Ver detalhes</a></td></tr>`).join('')}</tbody></table></div>`:empty('Sua primeira vaga começa aqui','Crie uma oportunidade e receba uma lista curta de candidatos.',`<a class="btn btn-primary" href="#/empresa/nova-vaga">Criar vaga</a>`),`<a class="link-inline" href="#/empresa/vagas" style="font-size:12px">Ver todas ${ic('arrow-right',13)}</a>`)}</div><div>${dashCard('A experiência JJ',`<div class="metric-panel"><span class="subtle" style="color:#aac3dd">PRÉ-SELEÇÃO ENXUTA</span><div><strong>Até 5</strong><span style="display:block;color:#c3d3e3;font-size:13px">perfis compatíveis por vaga</span></div><p style="font-size:12px;margin-top:16px">Concentre suas decisões nas entrevistas, não em pilhas de currículos.</p><a class="btn btn-white btn-sm" href="#/como-funciona">Entender a triagem ${ic('arrow-right')}</a></div>`)}${dashCard('Próximos passos',`<div class="timeline"><div class="timeline-item"><h4>Descreva uma necessidade</h4><p>Informe cargo, requisitos e condições da vaga.</p></div><div class="timeline-item"><h4>Receba os perfis revisados</h4><p>O administrador libera uma lista com até cinco pessoas.</p></div><div class="timeline-item"><h4>Atualize o processo</h4><p>Registre entrevistas e resultado para dar retorno.</p></div></div>`)}</div></div>`)}
-function companyJobs(){if(!gated('company'))return redirectRequired('company');const jobs=ownJobs().slice().sort((a,b)=>new Date(b.created)-new Date(a.created));return dashboard('company','/empresa/vagas',`${dashHead('MINHAS OPORTUNIDADES','Gerenciar vagas','Crie, acompanhe e finalize os processos da sua empresa.',`<a href="#/empresa/nova-vaga" class="btn btn-primary">${ic('plus')} Nova vaga</a>`)}${dashCard('Vagas cadastradas',jobs.length?`<div class="table-scroll"><table class="data-table"><thead><tr><th>Cargo</th><th>Cidade</th><th>Data</th><th>Status</th><th>Pré-selecionados</th><th></th></tr></thead><tbody>${jobs.map(j=>`<tr><td><strong>${esc(j.title)}</strong></td><td>${esc(j.city)}</td><td>${fmtDate(j.created)}</td><td>${statusTag(j.status)}</td><td>${j.shortlist?.length||0} / 5</td><td><a class="btn btn-outline btn-sm" href="#/empresa/vaga/${esc(j.id)}">Acompanhar ${ic('arrow-right')}</a></td></tr>`).join('')}</tbody></table></div>`:empty('Nenhuma vaga publicada','Cadastre a primeira oportunidade da sua empresa.',`<a href="#/empresa/nova-vaga" class="btn btn-primary">Criar vaga</a>`))}`)}
-function companyNewJob(){if(!gated('company'))return redirectRequired('company');const co=me();return dashboard('company','/empresa/nova-vaga',`${dashHead('CRIAR OPORTUNIDADE','Abrir uma nova vaga','Descreva requisitos claros para encontrar profissionais compatíveis.')}<div class="dash-two-col"><div>${dashCard('Informações da vaga',`<form id="new-job-form"><h3 class="form-section-title">Descrição básica</h3><div class="field-grid"><div class="field"><label>Título da vaga *</label><input name="title" required maxlength="100" placeholder="Ex.: Auxiliar administrativo" /></div><div class="field"><label>Setor *</label><select name="sector" required>${opts(SECTORS,co.sector)}</select></div><div class="field"><label>Cidade *</label><select name="city" required>${opts(CITIES,co.city)}</select></div><div class="field"><label>Modelo de trabalho</label><select name="workMode">${opts(['Presencial','Híbrido','Remoto'],'Presencial')}</select></div><div class="field"><label>Tipo de contratação</label><select name="contract">${opts(['CLT','Estágio','Temporário','Aprendiz','Outro'],'CLT')}</select></div><div class="field"><label>Jornada de trabalho *</label><select name="schedule">${opts(AVAILS,'Integral')}</select></div><div class="field"><label>Remuneração mensal (R$) *</label><input type="number" name="salary" required min="0" max="100000" step="1" placeholder="Ex.: 1800" /></div></div><div class="field"><label>Descrição da função *</label><textarea name="description" required minlength="20" placeholder="O que a pessoa fará no dia a dia?"></textarea></div><div class="field"><label>Benefícios</label><textarea name="benefits" placeholder="Vale-transporte, alimentação..."></textarea></div><h3 class="form-section-title">Critérios de seleção</h3><div class="field-grid"><div class="field"><label>Escolaridade mínima *</label><select name="school" required>${opts(Object.entries(SCHOOL),'medio')}</select></div><div class="field"><label>Experiência desejável (anos)</label><input type="number" name="desiredExperience" min="0" max="50" value="1" /></div></div><div class="field"><label>Competências obrigatórias</label><input name="requiredSkills" placeholder="Ex.: Atendimento, Excel"/><span class="hint">São eliminatórias. Use apenas exigências indispensáveis.</span></div><div class="field"><label>Competências desejáveis</label><input name="desiredSkills" placeholder="Ex.: Comunicação, Organização"/><span class="hint">Servem para pontuar, não para eliminar.</span></div><label class="field-check"><input type="checkbox" name="locationRequired" /><span>Exigir residência na mesma cidade (requisito eliminatório). Use apenas quando necessário para a vaga.</span></label><div class="form-actions"><a href="#/empresa/vagas" class="btn btn-outline">Cancelar</a><button class="btn btn-primary" type="submit">${ic('plus')} Criar vaga</button></div></form>`)}</div><aside>${dashCard('Como funciona a triagem',`<div class="timeline"><div class="timeline-item"><h4>1. Verificação de requisitos</h4><p>Escolaridade e competências obrigatórias.</p></div><div class="timeline-item"><h4>2. Pontuação objetiva</h4><p>Experiência 40 · Competências 25 · Região 25 · Disponibilidade 10.</p></div><div class="timeline-item"><h4>3. Revisão e envio</h4><p>A equipe revisa até 5 perfis antes do envio.</p></div></div><div class="alert-info">${ic('info')} A seleção não considera idade, sexo, raça, religião ou estado civil.</div>`)}</aside></div>`)}
-function companyJobDetail(jobId){if(!gated('company'))return redirectRequired('company');const j=getJob(jobId);if(!j||j.companyId!==session().id)return notFound();const lst=(j.shortlist||[]).map(id=>getCa(id)).filter(Boolean);return dashboard('company','/empresa/vagas',`${dashHead('ACOMPANHAR VAGA',esc(j.title),`${esc(j.city)} · ${esc(j.contract)} · ${fmtDate(j.created)}`,`<button class="btn ${j.status==='closed'?'btn-outline':'btn-danger'}" data-action="${j.status==='closed'?'reopen-job':'close-job'}" data-id="${esc(j.id)}">${ic(j.status==='closed'?'refresh':'x')} ${j.status==='closed'?'Reabrir vaga':'Encerrar vaga'}</button>`)}<div class="grid-3" style="margin-bottom:20px">${stat('briefcase','Situação',statusInfo(j.status)[0],'Etapa atual da vaga')}${stat('users','Perfis liberados',lst.length,'Máximo de 5')}${stat('calendar','Candidaturas',getAppsByJob(j.id).length,'Interessados registrados','orange')}</div><div class="dash-two-col"><div>${dashCard('Lista de candidatos',lst.length?`<div class="alert-info" style="margin-bottom:17px">${ic('check-circle')} Esta lista foi revisada pela administração. A decisão de entrevistar e contratar é da empresa.</div>${lst.map(c=>{const a=db.applications.find(a=>a.jobId===j.id&&a.candidateId===c.id);const m=match(c,j);return `<div class="review-candidate"><div class="review-head">${avatar(c.name)}<div style="flex:1"><strong>${esc(c.name)}</strong><div class="subtle">${formatCandidate(c)}</div></div><div class="review-score">${m.eligible?m.score+'%':'—'}<small>compatibilidade</small></div></div><p style="font-size:12px;margin:13px 0 10px">${esc(short(c.bio,160))}</p><div class="candidate-tags">${c.skills.slice(0,5).map(x=>tag(x)).join('')}</div><div class="flex" style="margin-top:13px;flex-wrap:wrap;gap:14px"><span class="subtle">${ic('mail',14)} ${esc(c.email)}</span><span class="subtle">${ic('phone',14)} ${esc(c.phone||'Não informado')}</span></div><div class="divider" style="margin:15px 0"></div><div class="flex-between" style="flex-wrap:wrap"><span>${tag(a?.status||'Pré-selecionado',applicationTag(a?.status||'Pré-selecionado'))}</span><div class="flex" style="flex-wrap:wrap">${j.status!=='closed'?`<button class="btn btn-outline btn-sm" data-action="set-stage" data-stage="Entrevista" data-job="${esc(j.id)}" data-candidate="${esc(c.id)}">Entrevistar</button><button class="btn btn-green btn-sm" data-action="set-stage" data-stage="Contratado" data-job="${esc(j.id)}" data-candidate="${esc(c.id)}">Contratado</button><button class="btn btn-danger btn-sm" data-action="set-stage" data-stage="Não selecionado" data-job="${esc(j.id)}" data-candidate="${esc(c.id)}">Não selecionado</button>`:''}</div></div></div>`}).join('')}`:j.status==='closed'?empty('Processo encerrado','Esta vaga foi fechada sem perfis liberados.'):empty('Aguardando lista de perfis','A administração está realizando a triagem. A lista ficará disponível aqui quando for revisada.'),`<a href="#/empresa/candidatos" class="link-inline" style="font-size:12px">Todos os candidatos ${ic('arrow-right',13)}</a>`)}</div><div>${dashCard('Detalhes da oportunidade',`<div class="detail-metric"><span class="muted">Situação</span>${statusTag(j.status)}</div>${[['Salário',money(j.salary)],['Cidade',j.city],['Jornada',j.schedule],['Escolaridade',SCHOOL[j.school]],['Experiência desejável',j.desiredExperience+' ano(s)']].map(([a,b])=>`<div class="detail-metric"><span class="muted">${esc(a)}</span><strong>${esc(b)}</strong></div>`).join('')}<div class="divider"></div><span class="subtle">HABILIDADES OBRIGATÓRIAS</span><div class="candidate-tags" style="margin:10px 0 20px">${j.requiredSkills.length?j.requiredSkills.map(s=>tag(s,'blue')).join(''):tag('Nenhuma')}</div><span class="subtle">HABILIDADES DESEJÁVEIS</span><div class="candidate-tags" style="margin-top:10px">${j.desiredSkills.length?j.desiredSkills.map(s=>tag(s)).join(''):tag('Nenhuma')}</div>`)}${dashCard('Publicação da lista',`<div class="status-steps"><span class="done">✓ Vaga aberta</span><span class="${j.status==='open'?'current':'done'}">${j.status==='open'?'•':'✓'} Em triagem</span><span class="${j.status==='sent'||j.status==='closed'?'done':''}">Lista liberada</span></div><p style="font-size:12px;margin-top:14px">${j.status==='sent'?'A lista está disponível para a empresa.':j.status==='closed'?'O processo foi finalizado.': 'A publicação é manual após revisão da equipe JJ.'}</p>`)}</div></div>`)}
-function companyCandidates(){if(!gated('company'))return redirectRequired('company');const items=ownJobs().flatMap(j=>(j.shortlist||[]).map(cid=>({j,c:getCa(cid)}))).filter(x=>x.c);return dashboard('company','/empresa/candidatos',`${dashHead('TALENTOS PRÉ-SELECIONADOS','Candidatos recebidos','Acompanhe os profissionais já enviados em listas revisadas.')}${dashCard('Histórico de perfis',items.length?`<div class="table-scroll"><table class="data-table"><thead><tr><th>Profissional</th><th>Vaga</th><th>Afinidade</th><th>Situação</th><th></th></tr></thead><tbody>${items.map(({j,c})=>{const a=db.applications.find(x=>x.jobId===j.id&&x.candidateId===c.id);const m=match(c,j);return `<tr><td><strong>${esc(c.name)}</strong><div class="subtle">${esc(c.city)}</div></td><td>${esc(j.title)}</td><td>${tag(m.eligible?m.score+'%':'Revisar','green')}</td><td>${tag(a?.status||'Pré-selecionado',applicationTag(a?.status||'Pré-selecionado'))}</td><td><a class="btn btn-outline btn-sm" href="#/empresa/vaga/${esc(j.id)}">Gerenciar</a></td></tr>`}).join('')}</tbody></table></div>`:empty('Sem perfis recebidos','Quando uma lista for revisada e liberada, os candidatos aparecerão aqui.'))}`)}
-function companySettings(){if(!gated('company'))return redirectRequired('company');const co=me();return dashboard('company','/empresa/configuracoes',`${dashHead('CONFIGURAÇÕES','Dados da empresa','Atualize as informações institucionais da sua conta demonstrativa.') }<div class="dash-two-col"><div>${dashCard('Perfil da empresa',`<form id="company-profile-form">${companyFields(co)}<div class="form-actions"><button class="btn btn-primary" type="submit">${ic('check')} Salvar alterações</button></div></form>`)}</div><div>${dashCard('Seu plano demonstrativo',`<span class="tag orange">${esc(co.plan)}</span><p style="font-size:13px;margin:16px 0">Os preços do projeto são ilustrativos. Não existe cobrança nesta versão.</p><a href="#/planos" class="btn btn-outline w-full">Consultar planos</a>`)}${dashCard('Dados locais',`<p style="font-size:12px">Este painel é um protótipo e não substitui um sistema corporativo seguro.</p><a href="#/privacidade" class="link-inline">Como funciona o armazenamento ${ic('arrow-right',13)}</a>`)}</div></div>`)}
-// ─── Administração: supervisão, revisão humana e relatórios ──────────────
-function adminHome(){if(!gated('admin'))return redirectRequired('admin');const pending=db.jobs.filter(j=>j.status==='open'||j.status==='triagem');const sent=db.jobs.filter(j=>j.status==='sent');const hired=db.applications.filter(a=>a.status==='Contratado');const totalApps=db.applications.length;const monthly=[6,9,7,13,11,db.jobs.length];return dashboard('admin','/admin',`${dashHead('CENTRAL DE OPERAÇÕES','Visão geral da plataforma','Acompanhe vagas, empresas e o fluxo de pré-seleção.',`<a href="#/admin/vagas" class="btn btn-primary">${ic('clipboard')} Revisar vagas</a>`)}<div class="stats-grid">${stat('briefcase','Vagas cadastradas',db.jobs.length,'Na base de demonstração')}${stat('users','Candidatos',db.candidates.length,'Perfis com dados profissionais','orange')}${stat('building','Empresas',db.companies.length,'Negócios cadastrados')}${stat('target','Triagens pendentes',pending.length,'Vagas a acompanhar','green')}</div><div class="dash-two-col"><div>${dashCard('Fila de revisão humana',pending.length?`<div class="table-scroll"><table class="data-table"><thead><tr><th>Vaga</th><th>Empresa</th><th>Elegíveis</th><th>Situação</th><th></th></tr></thead><tbody>${pending.map(j=>`<tr><td><strong>${esc(j.title)}</strong></td><td>${esc(getCo(j.companyId)?.name)}</td><td>${countCandidatesForJob(j)} perfis</td><td>${statusTag(j.status)}</td><td><a class="btn btn-outline btn-sm" href="#/admin/triagem/${esc(j.id)}">Revisar ${ic('arrow-right')}</a></td></tr>`).join('')}</tbody></table></div>`:empty('Nenhuma triagem pendente','Todas as vagas ativas já foram analisadas.'),`<a class="link-inline" href="#/admin/vagas" style="font-size:12px">Todas as vagas ${ic('arrow-right',13)}</a>`)}${dashCard('Envios recentes',sent.length?`<div class="profile-list">${sent.slice(-5).reverse().map(j=>`<div class="person-line"><div class="feature-icon green" style="width:36px;height:36px;margin:0">${ic('check-circle',17)}</div><div style="flex:1"><h4>${esc(j.title)}</h4><p>${esc(getCo(j.companyId)?.name)} · ${j.shortlist.length} perfis enviados</p></div><a class="btn btn-outline btn-sm" href="#/admin/triagem/${esc(j.id)}">Ver</a></div>`).join('')}</div>`:empty('Sem envios por enquanto','Revise uma vaga para liberar a lista à empresa.'))}</div><div>${dashCard('Indicadores da demonstração',`<div class="flex-between" style="margin-bottom:11px"><span class="subtle">Interesse registrado</span>${tag(totalApps+' inscrições','blue')}</div><div class="chart-bars">${monthly.map((n,i)=>`<div class="chart-col"><div class="bar" style="height:${Math.max(8,Math.min(125,n*8))}px"></div><span>${['Mai','Jun','Jul','Ago','Set','Demo'][i]}</span></div>`).join('')}</div><p class="dev-note" style="margin-top:14px">Visualização ilustrativa; as cinco primeiras barras não são métricas reais do sistema.</p><div class="divider"></div><div class="flex-between"><span class="muted">Contratações registradas</span><strong>${hired.length}</strong></div>`)}${dashCard('Critérios de triagem',`<p style="font-size:12px">Requisitos obrigatórios primeiro. Pontuação máxima: 100 pontos.</p>${[['Experiência',40],['Competências',25],['Região',25],['Disponibilidade',10]].map(([a,b])=>`<div class="flex-between" style="margin-top:12px"><span class="subtle">${a}</span><strong>${b} pts</strong></div><div class="progress-track" style="height:5px;margin-top:6px"><span style="width:${b}%"></span></div>`).join('')}<a class="btn btn-outline btn-sm w-full" style="margin-top:18px" href="#/como-funciona">Ver metodologia</a>`)}</div></div>`)}
-function adminJobs(){if(!gated('admin'))return redirectRequired('admin');const jobs=db.jobs.slice().sort((a,b)=>new Date(b.created)-new Date(a.created));return dashboard('admin','/admin/vagas',`${dashHead('GERENCIAMENTO','Vagas e pré-seleções','Revise cada resultado antes de entregar a lista à empresa.',`<button class="btn btn-outline" data-action="export-jobs">${ic('download')} Exportar CSV</button>`)}${dashCard('Todas as oportunidades',`<div class="table-scroll"><table class="data-table"><thead><tr><th>Vaga</th><th>Empresa</th><th>Compatíveis</th><th>Pré-selecionados</th><th>Situação</th><th></th></tr></thead><tbody>${jobs.map(j=>`<tr><td><strong>${esc(j.title)}</strong><div class="subtle">${esc(j.city)} · ${fmtDate(j.created)}</div></td><td>${esc(getCo(j.companyId)?.name)}</td><td>${countCandidatesForJob(j)}</td><td>${j.shortlist?.length||0}/5</td><td>${statusTag(j.status)}</td><td><a class="btn ${j.status==='open'||j.status==='triagem'?'btn-primary':'btn-outline'} btn-sm" href="#/admin/triagem/${esc(j.id)}">${j.status==='open'||j.status==='triagem'?'Fazer triagem':'Ver lista'} ${ic('arrow-right')}</a></td></tr>`).join('')}</tbody></table></div>`)}<div class="alert-info">${ic('shield')} A pré-seleção exige revisão humana. A lista pode conter de zero a cinco perfis; não inventamos candidatos quando não há compatibilidade.</div>`)}
-function miniScoreBar(label,score,max){return `<div><small>${esc(label)} <strong>${score}/${max}</strong></small><div class="progress-track"><span class="${score/max>=.8?'good':'warn'}" style="width:${Math.round(100*score/max)}%"></span></div></div>`}
-function adminReview(jobId){if(!gated('admin'))return redirectRequired('admin');const j=getJob(jobId);if(!j)return notFound();const co=getCo(j.companyId);const list=candidatesFor(j);const chosen=j.reviewed||[];const sent=j.status==='sent';return dashboard('admin','/admin/vagas',`${dashHead('REVISÃO HUMANA',esc(j.title),`${esc(co?.name||'Empresa')} · ${esc(j.city)} · ${countCandidatesForJob(j)} profissionais elegíveis.`,`${statusTag(j.status)}`)}<a href="#/admin/vagas" class="back-link">${ic('arrow-left')} Voltar às vagas</a><div class="dash-two-col"><div>${dashCard('Profissionais elegíveis',`<div class="alert-info" style="margin-bottom:17px">${ic('info')} Somente perfis que atendem à escolaridade e às competências obrigatórias. Selecione no máximo 5 candidatos, depois envie a lista à empresa.</div>${list.length?list.map(({candidate:c,score,parts},i)=>{const isSelected=chosen.includes(c.id)||sent&&j.shortlist.includes(c.id);return `<div class="review-candidate ${isSelected?'selected':''}"><div class="review-head">${avatar(c.name,i%3===0?'orange':i%3===1?'green':'')}<div style="flex:1;min-width:0"><strong>${esc(c.name)}</strong><div class="subtle">${formatCandidate(c)}</div></div><div class="review-score">${score}%<small>compatibilidade</small></div></div><p style="font-size:12px;margin:14px 0 0">${esc(c.bio)}</p><div class="candidate-tags" style="margin-top:12px">${c.skills.map(s=>tag(s)).join('')}</div><div class="score-bars">${miniScoreBar('Experiência',parts.experience,40)}${miniScoreBar('Competências',parts.skills,25)}${miniScoreBar('Região',parts.region,25)}${miniScoreBar('Disponibilidade',parts.availability,10)}</div><div class="flex-between" style="border-top:1px solid var(--border);padding-top:12px"><span class="subtle">${ic('shield',13)} Requisitos obrigatórios atendidos</span>${sent?isSelected?tag('Enviado à empresa','green'):tag('Não enviado'):j.status==='closed'?tag('Encerrada','red'):`<label class="field-check" style="margin:0;font-weight:800"><input type="checkbox" data-action="review-select" data-job="${esc(j.id)}" data-candidate="${esc(c.id)}" ${isSelected?'checked':''}/> Selecionar perfil</label>`}</div></div>`}).join(''):empty('Nenhum perfil atende aos requisitos','Experimente abrir novas oportunidades ou revisar os critérios obrigatórios junto à empresa. Não recomendamos flexibilizar critérios automaticamente.')}`,`<span class="tag blue">${list.length} elegíveis</span>`)}</div><div>${dashCard('Lista para envio',`<div class="flex-between"><span class="subtle">Perfis selecionados</span><strong id="review-count">${sent?j.shortlist.length:chosen.length} de 5</strong></div><div class="progress-track" style="margin:12px 0 16px"><span id="review-progress" style="width:${(sent?j.shortlist.length:chosen.length)*20}%"></span></div><div id="selected-preview">${(sent?j.shortlist:chosen).length?(sent?j.shortlist:chosen).map(cid=>getCa(cid)).filter(Boolean).map(c=>`<div class="person-line">${avatar(c.name,'','small')}<div><h4>${esc(c.name)}</h4><p>${esc(c.city)}</p></div></div>`).join(''):'<p style="font-size:12px">Ainda não há candidatos selecionados.</p>'}</div><div class="divider"></div>${sent?`<div class="success-box">${ic('check-circle')} Lista enviada para a empresa.</div>`:j.status==='closed'?'<p class="subtle">Processo encerrado.</p>':`<button class="btn btn-primary w-full" data-action="send-list" data-id="${esc(j.id)}" ${chosen.length===0?'disabled':''}>${ic('send')} Enviar lista à empresa</button><p class="dev-note" style="margin-top:12px">A publicação também gerará avisos aos candidatos selecionados.</p>`}`)}${dashCard('Critérios obrigatórios',`<div class="detail-metric"><span class="subtle">Escolaridade</span><strong>${esc(SCHOOL[j.school])}</strong></div><div class="detail-metric"><span class="subtle">Cidade</span><strong>${esc(j.city)}</strong></div><div class="detail-metric"><span class="subtle">Jornada</span><strong>${esc(j.schedule)}</strong></div><div class="divider"></div><strong style="font-size:12px">Habilidades necessárias</strong><div class="candidate-tags" style="margin-top:9px">${j.requiredSkills.length?j.requiredSkills.map(s=>tag(s,'blue')).join(''):tag('Nenhuma')}</div><div class="divider"></div><strong style="font-size:12px">Desejáveis</strong><div class="candidate-tags" style="margin-top:9px">${j.desiredSkills.length?j.desiredSkills.map(s=>tag(s)).join(''):tag('Nenhuma')}</div>`)}</div></div>`)}
-function adminCandidates(){if(!gated('admin'))return redirectRequired('admin');const candidates=db.candidates.slice().sort((a,b)=>a.name.localeCompare(b.name,'pt-BR'));return dashboard('admin','/admin/candidatos',`${dashHead('BANCO DE TALENTOS','Candidatos cadastrados','Perfis de demonstração e seus dados profissionais.',`<button class="btn btn-outline" data-action="export-candidates">${ic('download')} Exportar CSV</button>`)}${dashCard('Profissionais',`<div class="table-scroll"><table class="data-table"><thead><tr><th>Nome</th><th>Cidade</th><th>Formação</th><th>Experiência</th><th>Competências</th><th>Cadastro</th></tr></thead><tbody>${candidates.map(c=>`<tr><td><div class="flex">${avatar(c.name,'','small')}<div><strong>${esc(c.name)}</strong><div class="subtle">${esc(c.roleInterest||'Não definido')}</div></div></div></td><td>${esc(c.city)}</td><td>${esc(SCHOOL[c.school])}</td><td>${c.experience} ano(s)</td><td>${esc(short(c.skills.join(', '),45))}</td><td>${tag(c.consent?'Autorizado':'Sem consentimento',c.consent?'green':'red')}</td></tr>`).join('')}</tbody></table></div>`)}<p class="dev-note">A base real necessitaria de regras rígidas de acesso e tratamento de dados pessoais.</p>`)}
-function adminCompanies(){if(!gated('admin'))return redirectRequired('admin');return dashboard('admin','/admin/empresas',`${dashHead('EMPRESAS CADASTRADAS','Parceiros da plataforma','Visualize as empresas que abriram vagas no ambiente demonstrativo.')}${dashCard('Base de empresas',`<div class="table-scroll"><table class="data-table"><thead><tr><th>Empresa</th><th>Setor</th><th>Cidade</th><th>Responsável</th><th>Plano</th><th>Vagas</th></tr></thead><tbody>${db.companies.map(co=>`<tr><td><div class="flex">${avatar(co.name,'orange','small')}<strong>${esc(co.name)}</strong></div></td><td>${esc(co.sector)}</td><td>${esc(co.city)}</td><td>${esc(co.contact)}</td><td>${tag(co.plan,'blue')}</td><td>${db.jobs.filter(j=>j.companyId===co.id).length}</td></tr>`).join('')}</tbody></table></div>`)}`)}
-function adminSettings(){if(!gated('admin'))return redirectRequired('admin');return dashboard('admin','/admin/configuracoes',`${dashHead('ADMINISTRAÇÃO','Configurações do MVP','Regras transparentes de seleção e controle dos dados de demonstração.')}<div class="dash-two-col"><div>${dashCard('Pontuação padrão',`<p style="font-size:12px">Pesos iniciais do piloto, conforme o projeto JJ Serviços. São fixos nesta versão demonstrativa.</p>${[['Experiência na função',40],['Competências desejáveis',25],['Proximidade da região',25],['Disponibilidade',10]].map(([l,v])=>`<div class="settings-row"><div><strong>${l}</strong><p>Componente de classificação</p></div>${tag(v+' pontos','blue')}</div>`).join('')}<div class="alert-info" style="margin-top:20px">${ic('shield')} Obrigatórios são eliminatórios. Idade, gênero, raça, religião, estado civil e filhos não são considerados.</div>`)}${dashCard('Informações da operação',`<div class="settings-row"><div><strong>Revisão humana</strong><p>Obrigatória antes de liberar listas</p></div>${tag('Ativada','green')}</div><div class="settings-row"><div><strong>Tamanho da lista</strong><p>Máximo por vaga</p></div>${tag('5 perfis','blue')}</div><div class="settings-row"><div><strong>Dados em uso</strong><p>${db.candidates.length} candidatos · ${db.jobs.length} vagas · ${db.companies.length} empresas</p></div>${tag('Local','orange')}</div>`)}</div><div>${dashCard('Ambiente de teste',`<div class="feature-icon orange">${ic('refresh')}</div><h3 style="font-size:18px">Restaurar dados iniciais</h3><p style="font-size:12px">Exclui cadastros, vagas e status criados nesta instalação e restaura os dados fictícios originais.</p><button class="btn btn-danger w-full" data-action="reset-demo">${ic('trash')} Restaurar demonstração</button><div class="divider"></div><p class="dev-note">A alteração vale apenas para este navegador. Não há banco de dados ou sincronização entre máquinas.</p>`)}${dashCard('Roadmap planejado',`<div class="timeline"><div class="timeline-item"><h4>Fase 1 — MVP</h4><p>Perfis, vagas, filtros, pontuação e revisão humana.</p></div><div class="timeline-item"><h4>Fase 2 — Pagamentos</h4><p>Planos e métricas reais em infraestrutura segura.</p></div><div class="timeline-item"><h4>Fase 3 — Escala</h4><p>Mensageria e IA avaliadas após validação do piloto.</p></div></div>`)}</div></div>`)}
-// ─── Navegação e renderização de páginas ──────────────────────────────────
-function render(){const r=route();let content='';let website=true;let title='JJ Serviços';const bits=r.split('/').filter(Boolean);
- if(r==='/'){content=home();title='Início'}
- else if(r==='/vagas'){content=listJobs();title='Encontrar vagas'}
- else if(bits[0]==='vaga'&&bits.length===2){content=jobDetail(bits[1]);title='Detalhes da vaga'}
- else if(r==='/empresas'){content=forCompanies();title='Para empresas'}
- else if(r==='/como-funciona'){content=howItWorks();title='Como funciona'}
- else if(r==='/planos'){content=pricing();title='Planos e preços'}
- else if(r==='/sobre'){content=about();title='Sobre a JJ'}
- else if(r==='/privacidade'){content=privacy();title='Privacidade'}
- else if(r==='/contato'){content=contact();title='Contato'}
- else if(r==='/entrar'){content=login();website=false;title='Entrar'}
- else if(bits[0]==='cadastro'&&bits.length===2&&['candidato','empresa'].includes(bits[1])){content=signup(bits[1]);website=false;title='Criar conta'}
- else if(r==='/candidato'){content=candidateHome();website=false;title='Área do candidato'}
- else if(r==='/candidato/perfil'){content=candidateProfile();website=false;title='Meu perfil'}
- else if(r==='/candidato/candidaturas'){content=candidateApplications();website=false;title='Minhas candidaturas'}
- else if(r==='/candidato/notificacoes'){content=candidateNotifications();website=false;title='Notificações'}
- else if(r==='/empresa'){content=companyHome();website=false;title='Painel da empresa'}
- else if(r==='/empresa/vagas'){content=companyJobs();website=false;title='Minhas vagas'}
- else if(r==='/empresa/nova-vaga'){content=companyNewJob();website=false;title='Nova vaga'}
- else if(bits[0]==='empresa'&&bits[1]==='vaga'&&bits.length===3){content=companyJobDetail(bits[2]);website=false;title='Acompanhar vaga'}
- else if(r==='/empresa/candidatos'){content=companyCandidates();website=false;title='Candidatos'}
- else if(r==='/empresa/configuracoes'){content=companySettings();website=false;title='Minha empresa'}
- else if(r==='/admin'){content=adminHome();website=false;title='Administração'}
- else if(r==='/admin/vagas'){content=adminJobs();website=false;title='Vagas e triagens'}
- else if(bits[0]==='admin'&&bits[1]==='triagem'&&bits.length===3){content=adminReview(bits[2]);website=false;title='Revisão de candidatos'}
- else if(r==='/admin/candidatos'){content=adminCandidates();website=false;title='Candidatos cadastrados'}
- else if(r==='/admin/empresas'){content=adminCompanies();website=false;title='Empresas cadastradas'}
- else if(r==='/admin/configuracoes'){content=adminSettings();website=false;title='Configurações'}
- else{content=notFound();title='Página não encontrada'}
- document.title=title+' | JJ Serviços';document.getElementById('app').innerHTML=header()+content+(website?footer():'');}
-function showModal(title,description,confirmAction,confirmLabel='Confirmar',danger=false){document.querySelector('.modal-backdrop')?.remove();const backdrop=document.createElement('div');backdrop.className='modal-backdrop';backdrop.innerHTML=`<div class="modal" role="dialog" aria-modal="true" aria-label="${esc(title)}"><button class="modal-close" data-action="modal-close" aria-label="Fechar">${ic('x')}</button><div class="feature-icon ${danger?'orange':'green'}">${ic(danger?'info':'check-circle')}</div><h2>${title}</h2><p>${description}</p><div class="modal-actions"><button class="btn btn-outline" data-action="modal-close">Cancelar</button><button class="btn ${danger?'btn-danger':'btn-primary'}" data-action="${confirmAction}">${confirmLabel}</button></div></div>`;document.body.appendChild(backdrop);backdrop.addEventListener('click',e=>{if(e.target===backdrop)backdrop.remove()})}
-function csvCell(v){return '"'+String(v??'').replace(/"/g,'""')+'"'}
-function exportCsv(name,headers,rows){const text='\ufeff'+[headers,...rows].map(r=>r.map(csvCell).join(';')).join('\r\n');const blob=new Blob([text],{type:'text/csv;charset=utf-8;'});const url=URL.createObjectURL(blob);const a=document.createElement('a');a.href=url;a.download=name;a.click();setTimeout(()=>URL.revokeObjectURL(url),1000);toast('Relatório CSV preparado.')} 
-function parseSkills(s){return [...new Set(String(s||'').split(',').map(v=>v.trim()).filter(Boolean))].slice(0,20)}
-function updateCandidate(c,f){c.name=String(f.get('name')||'').trim();c.email=String(f.get('email')||'').trim().toLowerCase();c.phone=String(f.get('phone')||'').trim();c.city=String(f.get('city')||'');c.school=String(f.get('school')||'medio');c.experience=Math.max(0,Math.min(50,Number(f.get('experience'))||0));c.availability=String(f.get('availability')||'Integral');c.roleInterest=String(f.get('roleInterest')||'').trim();c.skills=parseSkills(f.get('skills'));c.bio=String(f.get('bio')||'').trim();c.consent=f.has('consent');c.updated=todayISO()}
-function updateCompany(c,f){c.name=String(f.get('name')||'').trim();c.contact=String(f.get('contact')||'').trim();c.email=String(f.get('email')||'').trim().toLowerCase();c.phone=String(f.get('phone')||'').trim();c.city=String(f.get('city')||'');c.sector=String(f.get('sector')||'Outros');c.bio=String(f.get('bio')||'').trim()}
-function signIn(role,email='',quick=false){let obj;if(role==='candidate')obj=quick?db.candidates[0]:db.candidates.find(c=>norm(c.email)===norm(email));if(role==='company')obj=quick?db.companies[0]:db.companies.find(c=>norm(c.email)===norm(email));if(role==='admin'){if(!quick&&norm(email)!=='admin@demo.jj'){toast('Use admin@demo.jj para o acesso de demonstração.','error');return}db.session={role,id:'admin'};save();navigate('/admin');return}if(!obj){toast('Conta não encontrada. Cadastre-se ou use o acesso rápido.','error');return}db.session={role,id:obj.id};save();navigate(role==='candidate'?'/candidato':'/empresa')}
-function mutate(what){save();render();if(what)toast(what)}
-// ─── Ações e formulários ─────────────────────────────────────────────────
-let pendingJobId=null;
-document.addEventListener('click',e=>{
- const control=e.target.closest('[data-action]');if(!control)return;
- const action=control.dataset.action;
- // Ações em links podem ter href, mas a maioria é executada localmente.
- if(action==='menu'){const menu=document.getElementById('mobile-menu');menu?.classList.toggle('open');control.setAttribute('aria-expanded',String(menu?.classList.contains('open')));return}
- if(action==='logout'){e.preventDefault();db.session=null;save();navigate('/');render();toast('Você saiu do ambiente de demonstração.');return}
- if(action==='login-role'){loginRole=control.dataset.value;render();return}
- if(action==='demo-login'){signIn(control.dataset.value,'',true);return}
- if(action==='job-filter'){jobFilters.mode=control.dataset.value;render();return}
- if(action==='clear-search'){jobFilters={q:'',city:'',sector:'',mode:'all'};render();return}
- if(action==='apply'){
-  if(!gated('candidate')){navigate('/entrar');return}
-  const j=getJob(control.dataset.id);if(!j||j.status==='closed'){toast('Esta vaga não está disponível.','error');return}
-  if(db.applications.some(a=>a.candidateId===session().id&&a.jobId===j.id)){toast('Seu interesse já foi registrado.');return}
-  db.applications.push({id:id('ap'),candidateId:session().id,jobId:j.id,status:'Inscrito',date:todayISO()});
-  notice(session().id,'Interesse registrado',`Seu interesse na vaga ${j.title} foi registrado. A triagem seguirá os critérios informados pela empresa.`);
-  mutate('Inscrição demonstrativa registrada!');return;
- }
- if(action==='read-notification'){const n=db.notifications.find(n=>n.id===control.dataset.id);if(n?.candidateId===session()?.id){n.read=true;mutate('Notificação marcada como lida.')}return}
- if(action==='read-all'){if(!gated('candidate'))return;for(const n of db.notifications.filter(x=>x.candidateId===session().id))n.read=true;mutate('Mensagens marcadas como lidas.');return}
- if(action==='delete-profile'){if(gated('candidate'))showModal('Excluir seu perfil?','Essa operação exclui seu perfil, inscrições e notificações deste navegador. Não pode ser desfeita.','confirm-delete-profile','Excluir perfil',true);return}
- if(action==='confirm-delete-profile'){if(!gated('candidate'))return;const cid=session().id;db.candidates=db.candidates.filter(c=>c.id!==cid);db.applications=db.applications.filter(a=>a.candidateId!==cid);db.notifications=db.notifications.filter(n=>n.candidateId!==cid);for(const j of db.jobs){j.reviewed=(j.reviewed||[]).filter(x=>x!==cid);j.shortlist=(j.shortlist||[]).filter(x=>x!==cid)}db.session=null;document.querySelector('.modal-backdrop')?.remove();save();navigate('/');render();toast('Perfil excluído dos dados locais.');return}
- if(action==='close-job'){if(!gated('company'))return;const j=getJob(control.dataset.id);if(!j||j.companyId!==session().id)return;pendingJobId=j.id;showModal('Encerrar esta vaga?',`O processo <strong>${esc(j.title)}</strong> será finalizado e os candidatos envolvidos receberão um aviso demonstrativo.`,'confirm-close-job','Encerrar vaga',true);return}
- if(action==='confirm-close-job'){const j=getJob(pendingJobId);if(!j||!gated('company')||j.companyId!==session().id)return;j.status='closed';const ids=new Set([...(j.shortlist||[]),...getAppsByJob(j.id).map(a=>a.candidateId)]);for(const cid of ids)if(getCa(cid))notice(cid,'Processo seletivo encerrado',`O processo para ${j.title} foi encerrado por ${getCo(j.companyId)?.name||'empresa'}. Consulte o status da sua inscrição.`);pendingJobId=null;document.querySelector('.modal-backdrop')?.remove();mutate('Vaga encerrada e avisos registrados.');return}
- if(action==='reopen-job'){if(!gated('company'))return;const j=getJob(control.dataset.id);if(j?.companyId===session().id){j.status=j.shortlist?.length?'sent':'triagem';mutate('Vaga reaberta.')}return}
- if(action==='set-stage'){
-  if(!gated('company'))return;const j=getJob(control.dataset.job);const c=getCa(control.dataset.candidate);
-  if(!j||!c||j.companyId!==session().id||!j.shortlist?.includes(c.id)||j.status==='closed')return;
-  const stage=control.dataset.stage;
-  if(!['Entrevista','Contratado','Não selecionado'].includes(stage))return;
-  let a=db.applications.find(a=>a.jobId===j.id&&a.candidateId===c.id);
-  if(!a){a={id:id('ap'),jobId:j.id,candidateId:c.id,status:stage,date:todayISO()};db.applications.push(a)}else a.status=stage;
-  notice(c.id,'Status do processo atualizado',`Sua situação na vaga ${j.title} foi alterada para: ${stage}.`);
-  mutate('Status atualizado e aviso gerado.');return;
- }
- if(action==='send-list'){
-  if(!gated('admin'))return;const j=getJob(control.dataset.id);if(!j||j.status==='closed'||j.status==='sent')return;
-  const valid=new Set(candidatesFor(j).map(x=>x.candidate.id));const selected=[...new Set(j.reviewed||[])].filter(cid=>valid.has(cid));
-  if(selected.length<1||selected.length>5){toast('Selecione de 1 a 5 candidatos elegíveis.','error');return}
-  j.shortlist=selected;j.reviewed=[...selected];j.status='sent';
-  for(const cid of selected){let a=db.applications.find(a=>a.candidateId===cid&&a.jobId===j.id);if(a){if(a.status==='Inscrito')a.status='Pré-selecionado'}else db.applications.push({id:id('ap'),candidateId:cid,jobId:j.id,status:'Pré-selecionado',date:todayISO()});notice(cid,'Você foi pré-selecionado!',`Seu perfil foi incluído na lista da vaga ${j.title}. A empresa decidirá sobre a entrevista; pré-seleção não é contratação.`)}
-  mutate('Lista de '+selected.length+' perfil(is) enviada à empresa.');return;
- }
- if(action==='reset-demo'){if(!gated('admin'))return;showModal('Restaurar a demonstração?','Todos os dados criados ou editados neste navegador serão descartados, inclusive as contas locais de teste.','confirm-reset','Restaurar tudo',true);return}
- if(action==='confirm-reset'){db=seed();save();document.querySelector('.modal-backdrop')?.remove();navigate('/');render();toast('Dados fictícios restaurados.');return}
- if(action==='modal-close'){document.querySelector('.modal-backdrop')?.remove();return}
- if(action==='export-jobs'){if(!gated('admin'))return;exportCsv('jj-vagas-demo.csv',['Vaga','Empresa','Cidade','Status','Elegíveis','Enviados','Data'],db.jobs.map(j=>[j.title,getCo(j.companyId)?.name,j.city,statusInfo(j.status)[0],countCandidatesForJob(j),j.shortlist.length,fmtDate(j.created)]));return}
- if(action==='export-candidates'){if(!gated('admin'))return;exportCsv('jj-candidatos-demo.csv',['Nome','Cidade','Escolaridade','Experiência (anos)','Competências','Consentimento'],db.candidates.map(c=>[c.name,c.city,SCHOOL[c.school],c.experience,c.skills.join(', '),c.consent?'Sim':'Não']));return}
+root.addEventListener('click', async (event) => {
+  const button = event.target.closest('[data-analysis]');
+  if (!button) return;
+  const result = button.nextElementSibling;
+  button.disabled = true;
+  result.textContent = 'Consultando o Gemini…';
+  try {
+    const report = await api(
+      '/jobs/' + route().split('/')[1] + '/analysis/' + button.dataset.analysis,
+      'POST',
+    );
+    result.textContent = report.competencias + ' ' + report.proximidade;
+    button.hidden = true;
+  } catch (error) {
+    result.textContent = error.message;
+  } finally {
+    button.disabled = false;
+  }
 });
-document.addEventListener('change',e=>{
- const el=e.target;if(el.dataset.action!=='review-select')return;
- if(!gated('admin'))return;const j=getJob(el.dataset.job);if(!j||['sent','closed'].includes(j.status))return;
- const cid=el.dataset.candidate;
- if(!candidatesFor(j).some(x=>x.candidate.id===cid)){el.checked=false;toast('Este profissional não atende aos requisitos obrigatórios.','error');return}
- j.reviewed=j.reviewed||[];
- if(el.checked){if(j.reviewed.length>=5){el.checked=false;toast('O limite é de cinco perfis por vaga.','error');return}if(!j.reviewed.includes(cid))j.reviewed.push(cid)}else j.reviewed=j.reviewed.filter(x=>x!==cid);
- if(j.status==='open')j.status='triagem';
- save();const scroll=window.scrollY;render();window.scrollTo(0,scroll);
+root.addEventListener('input', async (event) => {
+  const input = event.target;
+  if (input.name !== 'cep') return;
+  const form = input.form,
+    cep = input.value.trim().replace('-', ''),
+    status = form.querySelector('.cep-status');
+  const ticket = String(Number(input.dataset.request || 0) + 1);
+  input.dataset.request = ticket;
+  if (!/^\d{8}$/.test(cep)) {
+    status.textContent = '';
+    return;
+  }
+  status.textContent = 'Buscando endereço…';
+  const keys = ['street', 'district', 'city', 'state'];
+  const previous = keys.map((k) => form.elements[k].value);
+  try {
+    const found = await api('/cep/' + cep);
+    if (input.dataset.request !== ticket) return;
+    keys.forEach((k, i) => {
+      if (form.elements[k].value === previous[i])
+        form.elements[k].value = found[k] || '';
+    });
+    status.textContent = 'Confira o endereço e informe o número.';
+  } catch (error) {
+    if (input.dataset.request === ticket) status.textContent = error.message;
+  }
 });
-document.addEventListener('submit',e=>{
- const form=e.target;if(!(form instanceof HTMLFormElement))return;
- const formId=form.id;const f=new FormData(form);
- if(formId==='job-search'){e.preventDefault();jobFilters.q=String(f.get('q')||'').trim();jobFilters.city=String(f.get('city')||'');jobFilters.sector=String(f.get('sector')||'');render();return}
- if(formId==='login-form'){e.preventDefault();signIn(loginRole,String(f.get('email')||''));return}
- if(formId==='signup-candidate'){
-  e.preventDefault();const email=String(f.get('email')||'').trim().toLowerCase();if(db.candidates.some(c=>norm(c.email)===norm(email))){toast('Este e-mail já tem cadastro. Entre pelo painel.','error');return}
-  if(!parseSkills(f.get('skills')).length||!f.has('consent')){toast('Informe competências e aceite o consentimento.','error');return}
-  const c={id:id('ca')};updateCandidate(c,f);db.candidates.push(c);db.session={role:'candidate',id:c.id};notice(c.id,'Bem-vindo à JJ Serviços!',`Seu perfil foi criado. Você já pode procurar vagas que combinem com suas habilidades.`);save();navigate('/candidato');toast('Seu perfil de demonstração foi criado!');return;
- }
- if(formId==='signup-company'){
-  e.preventDefault();const email=String(f.get('email')||'').trim().toLowerCase();if(db.companies.some(c=>norm(c.email)===norm(email))){toast('Este e-mail já está cadastrado.','error');return}
-  const c={id:id('co'),plan:'Por vaga'};updateCompany(c,f);db.companies.push(c);db.session={role:'company',id:c.id};save();navigate('/empresa');toast('Empresa criada. Agora abra sua primeira vaga!');return;
- }
- if(formId==='profile-form'){e.preventDefault();if(!gated('candidate'))return;const email=norm(f.get('email'));if(db.candidates.some(c=>c.id!==session().id&&norm(c.email)===email)){toast('Este e-mail já está em uso.','error');return}if(!f.has('consent')){toast('O consentimento é necessário para participar da seleção.','error');return}updateCandidate(me(),f);mutate('Perfil atualizado com sucesso!');return}
- if(formId==='company-profile-form'){e.preventDefault();if(!gated('company'))return;const email=norm(f.get('email'));if(db.companies.some(c=>c.id!==session().id&&norm(c.email)===email)){toast('Este e-mail já está em uso.','error');return}updateCompany(me(),f);mutate('Dados da empresa atualizados.');return}
- if(formId==='new-job-form'){
-  e.preventDefault();if(!gated('company'))return;
-  const title=String(f.get('title')||'').trim(),desc=String(f.get('description')||'').trim();if(!title||desc.length<20){toast('Confira o cargo e a descrição da vaga.','error');return}
-  const j={id:id('v'),companyId:session().id,title,sector:String(f.get('sector')||'Outros'),city:String(f.get('city')||''),workMode:String(f.get('workMode')||'Presencial'),contract:String(f.get('contract')||'CLT'),schedule:String(f.get('schedule')||'Integral'),salary:Math.max(0,Number(f.get('salary'))||0),school:String(f.get('school')||'medio'),requiredSkills:parseSkills(f.get('requiredSkills')),desiredSkills:parseSkills(f.get('desiredSkills')),desiredExperience:Math.max(0,Number(f.get('desiredExperience'))||0),locationRequired:f.has('locationRequired'),description:desc,benefits:String(f.get('benefits')||'').trim(),status:'triagem',reviewed:[],shortlist:[],created:todayISO()};
-  db.jobs.unshift(j);save();navigate('/empresa/vaga/'+j.id);toast('Vaga aberta! Aguardando revisão da JJ.');return;
- }
- if(formId==='contact-form'){e.preventDefault();toast('Mensagem simulada. Nenhum e-mail foi enviado.');form.reset();return}
-});
-window.addEventListener('hashchange',()=>{render();window.scrollTo(0,0)});
-window.addEventListener('keydown',e=>{if(e.key==='Escape')document.querySelector('.modal-backdrop')?.remove()});
-render();
-})();
