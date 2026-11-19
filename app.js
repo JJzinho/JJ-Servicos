@@ -1,3 +1,19 @@
+import {
+  esc,
+  input,
+  area,
+  select,
+  number,
+  catalog,
+  checklist,
+  referenceRoles,
+  collectRoles,
+  locationFields,
+  readAddress,
+  values,
+  collectedSkills,
+  bindFormControls,
+} from './ui/formulario.js';
 const paths = {
   user: '<path d="M20 21a8 8 0 0 0-16 0"/><circle cx="12" cy="8" r="4"/>',
   building:
@@ -46,14 +62,6 @@ const statusName = {
   sent: 'Lista enviada',
   closed: 'Encerrada',
 };
-const esc = (value) =>
-  String(value ?? '').replace(
-    /[&<>"']/g,
-    (c) =>
-      ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[
-        c
-      ],
-  );
 const icon = (name) =>
   `<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.7" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">${paths[name] || ''}</svg>`;
 const brand =
@@ -101,31 +109,10 @@ async function api(path, method = 'GET', data) {
   }
   return result;
 }
-function input(label, key, value = '', options = {}) {
-  const {
-    type = 'text',
-    required = true,
-    max = 120,
-    hint = '',
-    extra = '',
-  } = options;
-  return `<label>${label}<input name="${key}" type="${type}" value="${esc(value)}" maxlength="${max}" ${required ? 'required' : ''} ${extra}>${hint ? '<small>' + hint + '</small>' : ''}</label>`;
-}
-function area(label, key, value, max, required = false) {
-  return `<label>${label}<textarea name="${key}" maxlength="${max}" rows="4" ${required ? 'required' : ''}>${esc(value)}</textarea></label>`;
-}
-function select(label, key, values, selected) {
-  return `<label>${label}<select name="${key}">${values.map((v) => `<option ${v === selected ? 'selected' : ''}>${esc(v)}</option>`).join('')}</select></label>`;
-}
 const note = '<p class="error" role="alert"></p>';
 const submit = (label) =>
   note +
   `<button class="primary" type="submit">${label} ${icon('arrow-right')}</button>`;
-const number = (label, key, value) =>
-  input(label, key, value ?? 0, {
-    type: 'number',
-    extra: 'min="0" max="80" step="1"',
-  });
 const empty = (title, text) =>
   `<div class="empty">${icon('inbox')}<strong>${esc(title)}</strong><p>${esc(text)}</p></div>`;
 const date = (value) => new Date(value).toLocaleDateString('pt-BR');
@@ -183,109 +170,6 @@ function shell(content) {
 function heading(title, desc = '', action = '') {
   return `<div class="heading"><div><h1>${title}</h1>${desc ? `<p>${desc}</p>` : ''}</div>${action}</div>`;
 }
-const catalog = {
-  roles: [
-    'Atendente de loja',
-    'Operador de caixa',
-    'Auxiliar administrativo',
-    'Recepcionista',
-    'Vendedor',
-    'Repositor',
-    'Estoquista',
-    'Auxiliar de logística',
-    'Auxiliar de cozinha',
-    'Garçom',
-    'Auxiliar de serviços gerais',
-    'Assistente de atendimento',
-  ],
-  hard: [
-    'Atendimento ao cliente',
-    'Ponto de venda',
-    'Operação de caixa',
-    'Informática básica',
-    'Excel',
-    'Controle de estoque',
-    'Vendas',
-    'Organização de documentos',
-    'Emissão de notas fiscais',
-    'Preparo de alimentos',
-    'Separação de pedidos',
-    'Higienização de ambientes',
-  ],
-  soft: [
-    'Comunicação',
-    'Organização',
-    'Trabalho em equipe',
-    'Pontualidade',
-    'Proatividade',
-    'Atenção aos detalhes',
-    'Adaptabilidade',
-    'Resolução de problemas',
-    'Empatia',
-    'Responsabilidade',
-  ],
-};
-const clean = (text) =>
-  text
-    .trim()
-    .normalize('NFD')
-    .replace(/\p{M}/gu, '')
-    .toLowerCase()
-    .replace(/\s+/g, ' ');
-function optionTag(key, text, checked) {
-  return `<label class="pick"><input type="checkbox" name="${key}" value="${esc(text)}" ${checked ? 'checked' : ''}><span>${esc(text)}</span></label>`;
-}
-function checklist(label, key, preset, selected = []) {
-  const names = new Map([...preset, ...selected].map((s) => [clean(s), s]));
-  const checked = new Set(selected.map(clean));
-  return `<fieldset class="choice-set" data-group="${key}"><legend>${label}</legend><div class="picks">${[...names.values()].map((s) => optionTag(key, s, checked.has(clean(s)))).join('')}</div>
-    <div class="add-option"><input aria-label="Outra opção para ${label}" maxlength="${key === 'roles' ? 120 : 80}" placeholder="Outra opção"><button type="button" class="outline" data-add>Adicionar</button></div></fieldset>`;
-}
-function roleDetails(role) {
-  return `<fieldset class="role-entry" data-function="${esc(role.title)}"><legend>${esc(role.title)}</legend>
-  ${number('Anos de experiência nesta função', 'roleYears', role.years)}
-  ${area('Resumo da experiência nesta função', 'roleSummary', role.summary || '', 2400, true)}</fieldset>`;
-}
-function showRole(input) {
-  const container = input.form.querySelector('.role-details');
-  let entry = [...container.children].find(
-    (el) => clean(el.dataset.function) === clean(input.value),
-  );
-  if (!entry && input.checked) {
-    container.insertAdjacentHTML(
-      'beforeend',
-      roleDetails({ title: input.value, years: 0 }),
-    );
-    return;
-  }
-  if (entry) {
-    entry.disabled = !input.checked;
-    entry.hidden = !input.checked;
-  }
-}
-function locationFields(a = {}) {
-  return `<fieldset class="location-fields"><legend>Endereço</legend><div class="form-grid">
-    ${input('CEP', 'cep', a.cep, { max: 9, extra: 'inputmode="numeric" pattern="[0-9]{5}-?[0-9]{3}" autocomplete="postal-code" placeholder="00000-000"' })}
-    <small role="status" class="cep-status"></small>
-    ${input('Rua ou avenida', 'street', a.street, { max: 180 })}${input('Número', 'number', a.number, { max: 20, hint: 'Se não houver número, use S/N.' })}
-    ${input('Complemento (opcional)', 'complement', a.complement, { required: false })}${input('Bairro', 'district', a.district)}
-    ${input('Cidade', 'city', a.city)}${input('UF', 'state', a.state, { max: 2, extra: 'pattern="[A-Za-z]{2}" placeholder="PE"' })}</div></fieldset>`;
-}
-function readAddress(form) {
-  const a = Object.fromEntries(
-    ['cep', 'street', 'number', 'complement', 'district', 'city', 'state'].map(
-      (k) => [k, form.elements[k].value.trim()],
-    ),
-  );
-  a.state = a.state.toUpperCase();
-  return a;
-}
-function values(form, key) {
-  return new FormData(form).getAll(key);
-}
-function collectedSkills(form) {
-  return { hard: values(form, 'hard'), soft: values(form, 'soft') };
-}
 function profilePage() {
   const p = user.profile,
     company = user.role === 'company';
@@ -304,10 +188,14 @@ function profilePage() {
     ? input('Setor de atuação', 'sector', p.sector) +
       input('Pessoa responsável', 'contact', p.contact)
     : input('CPF', 'cpf', p.cpf, {
-        max: 14,
+        max: 32,
         extra: 'inputmode="numeric" placeholder="000.000.000-00"',
       }) +
-      input('Telefone de contato', 'phone', p.phone, { type: 'tel', max: 35 }) +
+      input('Telefone de contato', 'phone', p.phone, {
+        type: 'tel',
+        max: 35,
+        extra: 'autocomplete="tel" placeholder="(81) 99999-9999"',
+      }) +
       select('Formação', 'school', schools, p.school) +
       select('Disponibilidade', 'availability', shifts, p.availability);
   return (
@@ -322,15 +210,7 @@ function profilePage() {
     ${
       company
         ? ''
-        : checklist(
-            'Funções de referência',
-            'roles',
-            catalog.roles,
-            roles.map((r) => r.title),
-          ) +
-          '<small>Marque suas funções. Para primeiro emprego, informe zero anos e descreva cursos ou atividades relacionados.</small><div class="role-details">' +
-          roles.map(roleDetails).join('') +
-          '</div>' +
+        : referenceRoles(roles) +
           checklist('Competências técnicas', 'hard', catalog.hard, p.hard) +
           checklist(
             'Competências comportamentais',
@@ -672,17 +552,10 @@ root.addEventListener('submit', async (event) => {
       user = await api('/me');
       go(user.role !== 'admin' && !user.profile.complete ? 'perfil' : 'inicio');
     } else if (form.id === 'profile') {
-      const roles = [
-        ...form.querySelectorAll('.role-entry:not(:disabled)'),
-      ].map((entry) => ({
-        title: entry.dataset.function,
-        years: entry.querySelector('[name=roleYears]').value,
-        summary: entry.querySelector('[name=roleSummary]').value,
-      }));
       await api('/me', 'PUT', {
         ...data,
         ...collectedSkills(form),
-        roles,
+        roles: collectRoles(form),
         address: readAddress(form),
         consent: !!data.consent,
       });
@@ -785,44 +658,10 @@ window.addEventListener('hashchange', () => {
   render();
   window.scrollTo(0, 0);
 });
+bindFormControls(root);
 boot();
 
-root.addEventListener('change', (event) => {
-  if (event.target.matches('input[name=roles]')) showRole(event.target);
-});
-root.addEventListener('keydown', (event) => {
-  if (event.key === 'Enter' && event.target.matches('.add-option input')) {
-    event.preventDefault();
-    event.target.parentElement.querySelector('button').click();
-  }
-});
 root.addEventListener('click', async (event) => {
-  const add = event.target.closest('[data-add]');
-  if (add) {
-    const group = add.closest('[data-group]'),
-      input = add.parentElement.querySelector('input');
-    const value = input.value.trim();
-    if (!value) {
-      input.focus();
-      return;
-    }
-    const picks = group.querySelector('.picks');
-    let item = [...picks.querySelectorAll('input')].find(
-      (el) => clean(el.value) === clean(value),
-    );
-    if (!item) {
-      picks.insertAdjacentHTML(
-        'beforeend',
-        optionTag(group.dataset.group, value, true),
-      );
-      item = picks.lastElementChild.querySelector('input');
-    }
-    item.checked = true;
-    if (item.name === 'roles') showRole(item);
-    input.value = '';
-    input.focus();
-    return;
-  }
   const button = event.target.closest('[data-analysis]');
   if (!button) return;
   const result = button.nextElementSibling;

@@ -632,15 +632,3 @@ dt {
     padding: 0 16px;
   }
 }
-
-.choice-set,.role-entry,.location-fields {min-width:0;margin:0;border:1px solid var(--line);border-radius:10px;padding:15px}
-.choice-set legend,.role-entry legend,.location-fields legend {padding:0 6px;font-weight:700}
-.picks {display:flex;flex-wrap:wrap;gap:7px}
-.pick {display:inline-flex;flex-direction:row;align-items:center;gap:6px;border:1px solid var(--line);border-radius:7px;padding:5px 9px;cursor:pointer;font-size:13px;font-weight:500}
-.pick:has(:checked) {background:#e4f0ed;border-color:#66918a}
-.pick input {accent-color:var(--teal)}
-.add-option {display:flex;gap:8px;margin-top:12px}
-.add-option input {min-width:0}
-.role-details,.role-entry {display:grid;gap:12px}
-.role-entry[hidden],button[hidden] {display:none}
-.cep-status {align-self:center}

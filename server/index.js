@@ -472,6 +472,8 @@ for (const path of [
   'index.html',
   'styles.css',
   'app.js',
+  'ui/formulario.js',
+  'ui/formulario.css',
   'assets/favicon.svg',
 ]) {
   app.get('/' + path, (req, res) => res.sendFile(path, { root }));
