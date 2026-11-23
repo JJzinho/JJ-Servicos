@@ -49,6 +49,7 @@ export async function startSession(db, accountId) {
 export function setCookie(res, token) {
   res.cookie('jj_session', token, {
     httpOnly: true,
+    secure: process.env.VERCEL === '1',
     sameSite: 'strict',
     path: '/',
     maxAge: duration,

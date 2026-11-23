@@ -1,5 +1,5 @@
 import { distanceKm } from './address.js';
-import { sectors } from '../ui/setores.js';
+import { sectors } from '../public/ui/setores.js';
 export const schools = ['Fundamental', 'Médio', 'Técnico', 'Superior'];
 export const shifts = ['Integral', 'Manhã', 'Tarde', 'Noite', 'Flexível'];
 export const stages = [
