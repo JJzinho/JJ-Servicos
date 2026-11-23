@@ -5,6 +5,9 @@ const connectionString = process.env.DATABASE_URL;
 if (!connectionString)
   throw new Error('Preencha DATABASE_URL no arquivo .env antes de iniciar.');
 const address = new URL(connectionString);
+// Permite corrigir o nome do banco sem substituir as credenciais da URI.
+if (process.env.PGDATABASE?.trim())
+  address.pathname = '/' + encodeURIComponent(process.env.PGDATABASE.trim());
 const local = ['localhost', '127.0.0.1', '[::1]'].includes(address.hostname);
 // pg aceita parâmetros SSL na URI que podem substituir a verificação abaixo.
 for (const key of ['sslmode', 'sslcert', 'sslkey', 'sslrootcert', 'ssl'])

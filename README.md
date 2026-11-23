@@ -27,6 +27,7 @@ O primeiro comando cria as tabelas no schema privado `jj` e pode ser repetido. O
 | --- | --- |
 | `DATABASE_URL` | Obrigatória. URI de conexão com o PostgreSQL. Para um banco local, use `postgresql://usuario:senha@localhost:5432/nome_do_banco` com um banco existente e um usuário que possa criar o schema `jj`. |
 | `PORT` | Opcional. Porta HTTP, com padrão `3000`. |
+| `PGDATABASE` | Opcional. Sobrescreve somente o nome do banco da URI. Use `postgres` para o banco padrão do projeto Supabase. |
 | `PG_CA_FILE` | Caminho para o arquivo PEM da autoridade certificadora, se necessário para validar a conexão com o banco remoto. |
 | `GEMINI_API_KEY` | Chave usada nas consultas ao Gemini. A triagem local funciona sem essa configuração. |
 | `GEMINI_MODEL` | Identificador do modelo usado pelo servidor. O padrão do projeto é `gemini-3.1-flash-lite`. |
