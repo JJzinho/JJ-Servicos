@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict';
 import test from 'node:test';
-import { formatField } from '../ui/formulario.js';
+import { formatField } from '../public/ui/formulario.js';
 
 test('CPF e CEP recebem a mesma máscara ao digitar, colar ou reabrir o cadastro', () => {
   for (const [key, raw, expected] of [

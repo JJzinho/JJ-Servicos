@@ -96,7 +96,14 @@ async function api(path, method = 'GET', data) {
   } catch {
     throw new Error('Não foi possível acessar o servidor. Confira a conexão.');
   }
-  const result = await response.json();
+  let result;
+  try {
+    result = await response.json();
+  } catch {
+    throw new Error(
+      `A API não retornou os dados esperados (HTTP ${response.status}). Confira a publicação do servidor.`,
+    );
+  }
   if (!response.ok) {
     if (result.code === 'PROFILE_INCOMPLETE' && user) {
       user.profile.complete = false;

@@ -31,6 +31,14 @@ O primeiro comando cria as tabelas no schema privado `jj` e pode ser repetido. O
 | `GEMINI_API_KEY` | Chave usada nas consultas ao Gemini. A triagem local funciona sem essa configuração. |
 | `GEMINI_MODEL` | Identificador do modelo usado pelo servidor. O padrão do projeto é `gemini-3.1-flash-lite`. |
 
+## Publicar na Vercel
+
+Importe o repositório usando a raiz do projeto (a pasta que contém `server.js` e `package.json`). Use o preset **Express** e os comandos e diretório de saída padrão. A Vercel serve os arquivos em `public/` e encaminha as rotas da API ao Express. Para rodar no PC, continue usando `npm start`.
+
+Em **Settings → Environment Variables**, configure `DATABASE_URL` com a URI do pooler Supabase para o ambiente que você vai publicar. Se o banco exigir o certificado, configure `PG_CA_PEM` com o conteúdo completo do arquivo do Supabase, incluindo as linhas BEGIN e END CERTIFICATE. O caminho de arquivo `PG_CA_FILE` é destinado à instalação local. Para ativar a IA, configure também `GEMINI_API_KEY` e, se necessário, `GEMINI_MODEL`.
+
+Após salvar as variáveis, publique um novo deploy. Para testar a ligação com a API, abra `/api/me` em uma janela anônima. A resposta esperada antes do login é HTTP 401 com a mensagem JSON “Entre para acessar o sistema.”. O primeiro login com uma conta existente confirma também a conexão com o banco.
+
 ## Cadastro e configurações da empresa
 
 Em **Cadastre-se**, escolha **Empresa** e informe nome da empresa, e-mail e senha de 8 a 128 caracteres. Depois do primeiro acesso, abra **Minha empresa** e preencha o cadastro.
@@ -105,9 +113,9 @@ Experiência ou competências desejáveis sem exigência recebem a pontuação m
 
 | Arquivos | Responsabilidade |
 | --- | --- |
-| [index.html](index.html), [app.js](app.js) e [styles.css](styles.css) | Entrada da aplicação, navegação por perfil, telas, envio dos formulários e estilos. |
-| [ui/](ui/) | Campos reutilizáveis, máscaras, seleção de competências e opções de setor. |
-| [server/index.js](server/index.js) e [server/auth.js](server/auth.js) | Rotas sob `/api`, controle de acesso, sessões e entrega do frontend. |
+| [index.html](public/index.html), [app.js](public/app.js) e [styles.css](public/styles.css) | Entrada da aplicação, navegação por perfil, telas, envio dos formulários e estilos. |
+| [public/ui/](public/ui/) | Campos reutilizáveis, máscaras, seleção de competências e opções de setor. |
+| [server.js](server.js) e [server/auth.js](server/auth.js) | Rotas sob `/api`, controle de acesso, sessões e entrega do frontend. |
 | [server/domain.js](server/domain.js) | Validação de perfis, configurações e vagas, critérios de elegibilidade e cálculo da nota. |
 | [server/address.js](server/address.js) e [server/gemini.js](server/gemini.js) | Consulta de CEP, cálculo de distância e integração com o Gemini. |
 | [server/db.js](server/db.js), [db/schema.sql](db/schema.sql) e [scripts/](scripts/) | Conexões e transações PostgreSQL, estrutura do banco, preparação da base e criação de administradores. |

@@ -10,10 +10,11 @@ const local = ['localhost', '127.0.0.1', '[::1]'].includes(address.hostname);
 for (const key of ['sslmode', 'sslcert', 'sslkey', 'sslrootcert', 'ssl'])
   address.searchParams.delete(key);
 const ca =
-  process.env.PG_CA_FILE && readFileSync(process.env.PG_CA_FILE, 'utf8');
+  process.env.PG_CA_PEM?.replace(/\\n/g, '\n') ||
+  (process.env.PG_CA_FILE && readFileSync(process.env.PG_CA_FILE, 'utf8'));
 export const pool = new pg.Pool({
   connectionString: address.toString(),
-  max: 6,
+  max: process.env.VERCEL === '1' ? 2 : 6,
   connectionTimeoutMillis: 10000,
   ssl: local ? false : { rejectUnauthorized: true, ...(ca && { ca }) },
 });
